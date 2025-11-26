@@ -2024,15 +2024,21 @@ HEADER-P indicates if this is a header row."
            (pad-left (or (vui-vnode-box-padding-left vnode) 0))
            (pad-right (or (vui-vnode-box-padding-right vnode) 0))
            (child (vui-vnode-box-child vnode))
+           (pad-left-str (make-string pad-left ?\s))
            ;; Render child to string to measure
            (content (with-temp-buffer
                       (vui--render-vnode child)
                       (buffer-string)))
+           ;; Add left padding after each newline for block indentation
+           (content (if (> pad-left 0)
+                        (replace-regexp-in-string
+                         "\n" (concat "\n" pad-left-str) content)
+                      content))
            (content-width (string-width content))
            (inner-width (- width pad-left pad-right))
            (padding (max 0 (- inner-width content-width))))
       ;; Insert left padding
-      (insert (make-string pad-left ?\s))
+      (insert pad-left-str)
       ;; Insert content with alignment
       (pcase align
         (:left
