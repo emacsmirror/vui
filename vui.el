@@ -73,6 +73,15 @@
   "Virtual node representing whitespace."
   width)
 
+;; Primitive: clickable button
+(cl-defstruct (vui-vnode-button (:include vui-vnode)
+                                (:constructor vui-vnode-button--create))
+  "Virtual node representing a clickable button."
+  label
+  on-click
+  face
+  disabled-p)
+
 ;;; Constructor Functions
 
 (defun vui-text (content &rest props)
@@ -97,6 +106,16 @@ PROPS is a plist accepting :face, :key, and other text properties."
 (defun vui-space (&optional width key)
   "Create a space vnode with WIDTH spaces (default 1) and optional KEY."
   (vui-vnode-space--create :width (or width 1) :key key))
+
+(defun vui-button (label &rest props)
+  "Create a button vnode with LABEL and optional PROPS.
+PROPS is a plist accepting :on-click, :face, :disabled, :key."
+  (vui-vnode-button--create
+   :label label
+   :on-click (plist-get props :on-click)
+   :face (plist-get props :face)
+   :disabled-p (plist-get props :disabled)
+   :key (plist-get props :key)))
 
 ;;; Rendering
 
@@ -130,6 +149,26 @@ PROPS is a plist accepting :face, :key, and other text properties."
    ((vui-vnode-space-p vnode)
     (insert (make-string (vui-vnode-space-width vnode) ?\s)))
 
+   ;; Button
+   ((vui-vnode-button-p vnode)
+    (let ((label (vui-vnode-button-label vnode))
+          (on-click (vui-vnode-button-on-click vnode))
+          (face (vui-vnode-button-face vnode))
+          (disabled (vui-vnode-button-disabled-p vnode)))
+      (if disabled
+          ;; Render disabled button as inactive text
+          (let ((start (point)))
+            (insert "[" label "]")
+            (put-text-property start (point) 'face
+                               (or face 'shadow)))
+        ;; Render active button using widget
+        (widget-create 'push-button
+                       :notify (lambda (&rest _)
+                                 (when on-click
+                                   (funcall on-click)))
+                       :button-face (or face 'custom-button)
+                       label))))
+
    ;; String shorthand
    ((stringp vnode)
     (insert vnode))
@@ -149,7 +188,9 @@ Clears the buffer before rendering."
   (with-current-buffer (or buffer (current-buffer))
     (let ((inhibit-read-only t))
       (erase-buffer)
-      (vui--render-vnode vnode))))
+      (vui--render-vnode vnode)
+      ;; Setup widgets for keyboard navigation
+      (widget-setup))))
 
 (defun vui-render-to-buffer (buffer-name vnode)
   "Render VNODE into a buffer named BUFFER-NAME.
@@ -161,34 +202,46 @@ Creates the buffer if it doesn't exist, switches to it."
 
 ;;; Demo
 
+(defvar vui-demo--counter 0
+  "Counter for the demo.")
+
+(defun vui-demo--render ()
+  "Render the demo UI."
+  (vui-fragment
+   (vui-text "Welcome to " :face 'font-lock-keyword-face)
+   (vui-text "vui.el" :face 'bold)
+   (vui-text "!" :face 'font-lock-keyword-face)
+   (vui-newline)
+   (vui-newline)
+   (vui-text "A declarative UI library for Emacs." :face 'font-lock-doc-face)
+   (vui-newline)
+   (vui-newline)
+   (vui-text "Counter: " :face 'font-lock-function-name-face)
+   (vui-text (number-to-string vui-demo--counter) :face 'bold)
+   (vui-newline)
+   (vui-newline)
+   (vui-button "  +  "
+               :on-click (lambda ()
+                           (cl-incf vui-demo--counter)
+                           (vui-demo)))
+   (vui-space 2)
+   (vui-button "  -  "
+               :on-click (lambda ()
+                           (cl-decf vui-demo--counter)
+                           (vui-demo)))
+   (vui-space 2)
+   (vui-button "Reset"
+               :on-click (lambda ()
+                           (setq vui-demo--counter 0)
+                           (vui-demo)))
+   (vui-newline)
+   (vui-newline)
+   (vui-text "Use TAB to navigate, RET to click." :face 'font-lock-comment-face)))
+
 (defun vui-demo ()
   "Show a demo of vui.el rendering capabilities."
   (interactive)
-  (vui-render-to-buffer "*vui-demo*"
-    (vui-fragment
-     (vui-text "Welcome to " :face 'font-lock-keyword-face)
-     (vui-text "vui.el" :face 'bold)
-     (vui-text "!" :face 'font-lock-keyword-face)
-     (vui-newline)
-     (vui-newline)
-     (vui-text "A declarative UI library for Emacs." :face 'font-lock-doc-face)
-     (vui-newline)
-     (vui-newline)
-     (vui-text "Features:" :face 'font-lock-function-name-face)
-     (vui-newline)
-     (vui-text "  • " :face 'font-lock-comment-face)
-     (vui-text "Text nodes with faces")
-     (vui-newline)
-     (vui-text "  • " :face 'font-lock-comment-face)
-     (vui-text "Fragments for grouping")
-     (vui-newline)
-     (vui-text "  • " :face 'font-lock-comment-face)
-     (vui-text "Newlines and spaces")
-     (vui-newline)
-     (vui-newline)
-     (vui-text "Try: " :face 'font-lock-comment-face)
-     (vui-text "(vui-render-to-buffer \"*test*\" (vui-text \"Hello!\"))"
-               :face 'font-lock-string-face))))
+  (vui-render-to-buffer "*vui-demo*" (vui-demo--render)))
 
 (provide 'vui)
 ;;; vui.el ends here

@@ -48,6 +48,25 @@
     (let ((node (vui-space 5)))
       (expect (vui-vnode-space-width node) :to-equal 5))))
 
+(describe "vui-button"
+  (it "creates a button vnode"
+    (let ((node (vui-button "Click me")))
+      (expect (vui-vnode-button-p node) :to-be-truthy)
+      (expect (vui-vnode-button-label node) :to-equal "Click me")))
+
+  (it "accepts on-click callback"
+    (let* ((clicked nil)
+           (node (vui-button "Click" :on-click (lambda () (setq clicked t)))))
+      (expect (vui-vnode-button-on-click node) :to-be-truthy)))
+
+  (it "accepts disabled property"
+    (let ((node (vui-button "Click" :disabled t)))
+      (expect (vui-vnode-button-disabled-p node) :to-be-truthy)))
+
+  (it "accepts key property"
+    (let ((node (vui-button "Click" :key "btn-1")))
+      (expect (vui-vnode-key node) :to-equal "btn-1"))))
+
 (describe "vui-render"
   (it "renders text to buffer"
     (with-temp-buffer
@@ -91,6 +110,26 @@
   (it "handles plain strings as shorthand"
     (with-temp-buffer
       (vui-render (vui-fragment "hello" " " "world"))
-      (expect (buffer-string) :to-equal "hello world"))))
+      (expect (buffer-string) :to-equal "hello world")))
+
+  (it "renders button with label"
+    (with-temp-buffer
+      (vui-render (vui-button "Click me"))
+      (expect (buffer-string) :to-match "Click me")))
+
+  (it "renders disabled button as text"
+    (with-temp-buffer
+      (vui-render (vui-button "Disabled" :disabled t))
+      (expect (buffer-string) :to-equal "[Disabled]")))
+
+  (it "triggers on-click callback when button is activated"
+    (with-temp-buffer
+      (let ((clicked nil))
+        (vui-render (vui-button "Click" :on-click (lambda () (setq clicked t))))
+        ;; Find and activate the widget
+        (goto-char (point-min))
+        (widget-forward 1)
+        (widget-button-press (point))
+        (expect clicked :to-be-truthy)))))
 
 ;;; vui-test.el ends here
