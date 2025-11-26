@@ -1,0 +1,15 @@
+# Eldev artifacts
+.eldev/
+/.eldev
+
+# Byte-compiled files
+*.elc
+
+# Generated autoloads
+*-autoloads.el
+
+# Package archives
+/dist/
+
+# Local development
+.dir-locals.el

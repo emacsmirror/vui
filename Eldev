@@ -1,0 +1,20 @@
+; -*- mode: emacs-lisp; lexical-binding: t -*-
+
+;; Eldev configuration for vui.el
+;; See https://github.com/doublep/eldev
+
+;; Use GNU ELPA and MELPA for dependencies
+(eldev-use-package-archive 'gnu-elpa)
+(eldev-use-package-archive 'melpa)
+
+;; Main package is vui.el
+(setf eldev-project-main-file "vui.el")
+
+;; Testing configuration
+(setf eldev-test-framework 'buttercup)
+
+;; Lint configuration
+(setf eldev-lint-default '(elisp))
+
+;; Exclude docs directory from linting
+(setf eldev-lint-fileset '(:and eldev-main-fileset (:not "docs/")))
