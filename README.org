@@ -7,6 +7,11 @@ Build reactive UIs in Emacs using familiar patterns from React and other modern
 UI frameworks. Define components with local state, props, lifecycle hooks, and
 automatic re-rendering.
 
+#+begin_quote
+*Note:* This is a fresh library under active development. The API may change
+based on real-world usage and feedback.
+#+end_quote
+
 * Features
 
 - *Components* — Reusable UI building blocks with props and local state
