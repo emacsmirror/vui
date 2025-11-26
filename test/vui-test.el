@@ -251,6 +251,98 @@
                                  :children (list (vui-text "content"))))
       (expect (buffer-string) :to-equal "[content]"))))
 
+(describe "lifecycle hooks"
+  (it "calls on-mount after first render"
+    (let ((mounted nil))
+      (defcomponent mount-test ()
+        :on-mount (setq mounted t)
+        :render (vui-text "hello"))
+      (let ((instance (vui-mount (vui-component 'mount-test) "*test-mount*")))
+        (unwind-protect
+            (progn
+              (expect mounted :to-be-truthy)
+              (expect (buffer-string) :to-equal "hello"))
+          (kill-buffer "*test-mount*")))))
+
+  (it "does not call on-mount on re-render"
+    (let ((mount-count 0))
+      (defcomponent mount-once ()
+        :state ((count 0))
+        :on-mount (setq mount-count (1+ mount-count))
+        :render (vui-text (number-to-string count)))
+      (let ((instance (vui-mount (vui-component 'mount-once) "*test-mount2*")))
+        (unwind-protect
+            (progn
+              (expect mount-count :to-equal 1)
+              ;; Trigger re-render
+              (vui--rerender-instance instance)
+              (expect mount-count :to-equal 1))
+          (kill-buffer "*test-mount2*")))))
+
+  (it "calls on-unmount when component is removed"
+    (let ((unmounted nil)
+          (show-child t))
+      (defcomponent unmount-child ()
+        :on-unmount (setq unmounted t)
+        :render (vui-text "child"))
+      (defcomponent unmount-parent ()
+        :render (if show-child
+                    (vui-component 'unmount-child)
+                  (vui-text "no child")))
+      (let ((instance (vui-mount (vui-component 'unmount-parent) "*test-unmount*")))
+        (unwind-protect
+            (progn
+              (expect unmounted :to-be nil)
+              (expect (buffer-string) :to-equal "child")
+              ;; Remove child by setting show-child to nil and re-render
+              (setq show-child nil)
+              (vui--rerender-instance instance)
+              (expect unmounted :to-be-truthy)
+              (expect (buffer-string) :to-equal "no child"))
+          (kill-buffer "*test-unmount*")))))
+
+  (it "calls on-unmount for nested children depth-first"
+    (let ((unmount-order nil))
+      (defcomponent nested-inner ()
+        :on-unmount (push 'inner unmount-order)
+        :render (vui-text "inner"))
+      (defcomponent nested-outer ()
+        :on-unmount (push 'outer unmount-order)
+        :render (vui-fragment
+                 (vui-text "outer:")
+                 (vui-component 'nested-inner)))
+      (defcomponent nested-root ()
+        :state ((show t))
+        :render (if show
+                    (vui-component 'nested-outer)
+                  (vui-text "empty")))
+      (let ((instance (vui-mount (vui-component 'nested-root) "*test-nested*")))
+        (unwind-protect
+            (progn
+              ;; Remove the nested components
+              (setf (vui-instance-state instance)
+                    (plist-put (vui-instance-state instance) :show nil))
+              (vui--rerender-instance instance)
+              ;; Inner should unmount before outer (depth-first)
+              (expect unmount-order :to-equal '(outer inner)))
+          (kill-buffer "*test-nested*")))))
+
+  (it "provides props and state to lifecycle hooks"
+    (let ((mount-props nil)
+          (mount-state nil))
+      (defcomponent lifecycle-args (name)
+        :state ((count 42))
+        :on-mount (setq mount-props name
+                        mount-state count)
+        :render (vui-text name))
+      (let ((instance (vui-mount (vui-component 'lifecycle-args :name "test")
+                                 "*test-args*")))
+        (unwind-protect
+            (progn
+              (expect mount-props :to-equal "test")
+              (expect mount-state :to-equal 42))
+          (kill-buffer "*test-args*"))))))
+
 (describe "reconciliation"
   (it "preserves child component state across parent re-render"
     ;; Define a child component with state

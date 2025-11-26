@@ -108,7 +108,9 @@
   name              ; Symbol identifying this component type
   props-spec        ; List of prop names (symbols)
   initial-state-fn  ; (lambda (props) state) or nil
-  render-fn)        ; (lambda (props state) vnode)
+  render-fn         ; (lambda (props state) vnode)
+  on-mount          ; (lambda ()) called after first render
+  on-unmount)       ; (lambda ()) called before removal
 
 ;; Component instance - a live component
 (cl-defstruct (vui-instance (:constructor vui-instance--create))
@@ -155,14 +157,18 @@
 ARGS is a list of prop names the component accepts.
 BODY contains keyword sections:
   :state ((var initial) ...) - local state variables
+  :on-mount FORM - called after first render (optional)
+  :on-unmount FORM - called before removal (optional)
   :render FORM - the render expression (required)
 
-The render expression has access to all props as variables,
-plus state variables, plus `children' for nested content.
+All forms have access to props as variables, state variables,
+and `children' for nested content.
 
 Example:
   (defcomponent greeting (name)
     :state ((count 0))
+    :on-mount (message \"Mounted: %s\" name)
+    :on-unmount (message \"Unmounted\")
     :render
     (vui-fragment
       (vui-text (format \"Hello, %s! Count: %d\" name count))
@@ -170,12 +176,18 @@ Example:
   (declare (indent 2))
   (let ((state-spec nil)
         (render-form nil)
+        (on-mount-form nil)
+        (on-unmount-form nil)
         (rest body))
     ;; Parse keyword arguments
     (while rest
       (pcase (car rest)
         (:state (setq state-spec (cadr rest)
                       rest (cddr rest)))
+        (:on-mount (setq on-mount-form (cadr rest)
+                         rest (cddr rest)))
+        (:on-unmount (setq on-unmount-form (cadr rest)
+                           rest (cddr rest)))
         (:render (setq render-form (cadr rest)
                        rest (cddr rest)))
         (_ (error "Unknown defcomponent keyword: %s" (car rest)))))
@@ -183,27 +195,31 @@ Example:
       (error "defcomponent %s: :render is required" name))
     (let ((state-vars (mapcar #'car state-spec))
           (state-inits (mapcar #'cadr state-spec)))
-      `(progn
-         (vui--register-component
-          (vui-component-def--create
-           :name ',name
-           :props-spec ',args
-           :initial-state-fn ,(if state-spec
-                                  `(lambda (_props)
-                                     (list ,@(cl-mapcan (lambda (var init)
-                                                          (list (intern (format ":%s" var)) init))
-                                                        state-vars state-inits)))
-                                nil)
-           :render-fn (lambda (--props-- --state--)
-                        (let (,@(mapcar (lambda (arg)
-                                          `(,arg (plist-get --props-- ,(intern (format ":%s" arg)))))
-                                        args)
-                              ,@(mapcar (lambda (var)
-                                          `(,var (plist-get --state-- ,(intern (format ":%s" var)))))
-                                        state-vars)
-                              (children (plist-get --props-- :children)))
-                          ,render-form))))
-         ',name))))
+      (cl-flet ((make-body-fn (form)
+                  `(lambda (--props-- --state--)
+                     (let (,@(mapcar (lambda (arg)
+                                       `(,arg (plist-get --props-- ,(intern (format ":%s" arg)))))
+                                     args)
+                           ,@(mapcar (lambda (var)
+                                       `(,var (plist-get --state-- ,(intern (format ":%s" var)))))
+                                     state-vars)
+                           (children (plist-get --props-- :children)))
+                       ,form))))
+        `(progn
+           (vui--register-component
+            (vui-component-def--create
+             :name ',name
+             :props-spec ',args
+             :initial-state-fn ,(if state-spec
+                                    `(lambda (_props)
+                                       (list ,@(cl-mapcan (lambda (var init)
+                                                            (list (intern (format ":%s" var)) init))
+                                                          state-vars state-inits)))
+                                  nil)
+             :render-fn ,(make-body-fn render-form)
+             :on-mount ,(when on-mount-form (make-body-fn on-mount-form))
+             :on-unmount ,(when on-unmount-form (make-body-fn on-unmount-form))))
+           ',name)))))
 
 ;;; Constructor Functions
 
@@ -293,27 +309,57 @@ Must be called from within a component's event handler."
     (when (and buffer (buffer-live-p buffer))
       (with-current-buffer buffer
         (let ((inhibit-read-only t)
+              (inhibit-redisplay t)  ; Prevent flicker
+              (old-point (point))
               (vui--root-instance instance))
           (remove-overlays)
           (erase-buffer)
           (vui--render-instance instance)
           (widget-setup)
           (use-local-map widget-keymap)
-          (goto-char (point-min)))))))
+          ;; Preserve cursor position
+          (goto-char (min old-point (point-max))))))))
 
 (defun vui--render-instance (instance)
   "Render a component INSTANCE into the current buffer."
   (let* ((vui--current-instance instance)
          (vui--child-index 0)
          (vui--new-children nil)
+         (old-children (vui-instance-children instance))
          (def (vui-instance-def instance))
          (render-fn (vui-component-def-render-fn def))
          (props (vui-instance-props instance))
          (state (vui-instance-state instance))
+         (first-render-p (not (vui-instance-mounted-p instance)))
          (vtree (funcall render-fn props state)))
     (vui--render-vnode vtree)
     ;; Update children list for next reconciliation
-    (setf (vui-instance-children instance) (nreverse vui--new-children))))
+    (let ((new-children (nreverse vui--new-children)))
+      ;; Call on-unmount for children that were removed
+      (dolist (old-child old-children)
+        (unless (memq old-child new-children)
+          (vui--call-unmount-recursive old-child)))
+      (setf (vui-instance-children instance) new-children))
+    ;; Call on-mount after first render
+    (when first-render-p
+      (setf (vui-instance-mounted-p instance) t)
+      (let ((on-mount (vui-component-def-on-mount def)))
+        (when on-mount
+          (funcall on-mount props state))))))
+
+(defun vui--call-unmount-recursive (instance)
+  "Call on-unmount for INSTANCE and all its children recursively."
+  ;; First unmount children (depth-first)
+  (dolist (child (vui-instance-children instance))
+    (vui--call-unmount-recursive child))
+  ;; Then unmount this instance
+  (let* ((def (vui-instance-def instance))
+         (on-unmount (vui-component-def-on-unmount def)))
+    (when on-unmount
+      (let ((vui--current-instance instance))
+        (funcall on-unmount
+                 (vui-instance-props instance)
+                 (vui-instance-state instance))))))
 
 (defun vui--find-matching-child (parent type key index)
   "Find a child of PARENT matching TYPE and KEY or INDEX."
@@ -575,6 +621,64 @@ Returns the root instance."
 Uses a stateful component with vui-mount."
   (interactive)
   (vui-mount (vui-component 'vui-demo-app) "*vui-demo*"))
+
+;; Timer component demonstrating lifecycle hooks
+(defvar vui--timer-registry (make-hash-table :test 'eq)
+  "Registry for active timers, keyed by instance ID.")
+
+(defcomponent vui-timer ()
+  :state ((seconds 0))
+  :on-mount
+  (let* ((instance vui--current-instance)
+         (root vui--root-instance)
+         (timer (run-at-time 1 1 (lambda ()
+                                   (when (buffer-live-p (vui-instance-buffer instance))
+                                     (let* ((vui--current-instance instance)
+                                            (vui--root-instance root)
+                                            (current-secs (plist-get (vui-instance-state instance) :seconds)))
+                                       (vui-set-state :seconds (1+ current-secs))))))))
+    (puthash (vui-instance-id instance) timer vui--timer-registry))
+  :on-unmount
+  (let ((timer (gethash (vui-instance-id vui--current-instance) vui--timer-registry)))
+    (when timer
+      (cancel-timer timer)
+      (remhash (vui-instance-id vui--current-instance) vui--timer-registry)))
+  :render
+  (vui-fragment
+   (vui-text "Timer: " :face 'font-lock-function-name-face)
+   (vui-text (format "%d" seconds) :face 'bold)
+   (vui-text " seconds")))
+
+;; Demo app for lifecycle hooks
+(defcomponent vui-lifecycle-demo ()
+  :state ((show-timer t))
+  :render
+  (vui-fragment
+   (vui-text "Lifecycle Hooks Demo" :face 'bold)
+   (vui-newline)
+   (vui-newline)
+   (vui-text "This demo shows on-mount and on-unmount hooks." :face 'font-lock-doc-face)
+   (vui-newline)
+   (vui-text "The timer starts counting on mount and stops on unmount.")
+   (vui-newline)
+   (vui-newline)
+   (if show-timer
+       (vui-component 'vui-timer)
+     (vui-text "[Timer removed]" :face 'shadow))
+   (vui-newline)
+   (vui-newline)
+   (vui-button (if show-timer "Stop Timer" "Start Timer")
+               :on-click (lambda ()
+                           (vui-set-state :show-timer (not show-timer))))
+   (vui-newline)
+   (vui-newline)
+   (vui-text "TAB: navigate | RET: activate" :face 'font-lock-comment-face)))
+
+(defun vui-lifecycle-demo ()
+  "Show a demo of lifecycle hooks with a timer.
+Demonstrates on-mount and on-unmount callbacks."
+  (interactive)
+  (vui-mount (vui-component 'vui-lifecycle-demo) "*vui-lifecycle-demo*"))
 
 (provide 'vui)
 ;;; vui.el ends here
