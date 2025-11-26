@@ -409,6 +409,28 @@ Usage: (vui-box (vui-text \"hello\") :width 20 :align :center)"
    :padding-right (or (plist-get props :padding-right) 0)
    :key (plist-get props :key)))
 
+(defun vui-list (items render-fn &optional key-fn)
+  "Render a list of ITEMS using RENDER-FN.
+RENDER-FN is called with each item and should return a vnode.
+KEY-FN extracts a unique key from each item (default: item itself).
+
+This ensures proper reconciliation when items are added, removed, or reordered.
+
+Usage:
+  (vui-list items
+            (lambda (item) (vui-text (plist-get item :name)))
+            (lambda (item) (plist-get item :id)))"
+  (let ((key-fn (or key-fn #'identity)))
+    (vui-vnode-fragment--create
+     :children (mapcar (lambda (item)
+                         (let* ((key (funcall key-fn item))
+                                (vnode (funcall render-fn item)))
+                           ;; Set key on the vnode if it supports it
+                           (when (and vnode (vui-vnode-p vnode))
+                             (setf (vui-vnode-key vnode) key))
+                           vnode))
+                       items))))
+
 (defun vui-component (type &rest props-and-children)
   "Create a component vnode of TYPE with PROPS-AND-CHILDREN.
 TYPE is a symbol naming a defined component.
@@ -1086,6 +1108,81 @@ Demonstrates vui-hstack, vui-vstack, and vui-box."
 Demonstrates vui-checkbox and vui-select."
   (interactive)
   (vui-mount (vui-component 'vui-widgets-demo) "*vui-widgets-demo*"))
+
+;; Todo list demo - showcases vui-list with dynamic items
+(defvar vui--todo-counter 0
+  "Counter for generating unique todo IDs.")
+
+(defcomponent vui-todo-item (todo on-toggle on-delete)
+  :render
+  (vui-hstack
+   (vui-checkbox :checked (plist-get todo :done)
+                 :on-change (lambda (_) (funcall on-toggle (plist-get todo :id))))
+   (vui-box (vui-text (plist-get todo :text)
+                      :face (if (plist-get todo :done) 'shadow nil))
+            :width 30)
+   (vui-button "x" :on-click (lambda () (funcall on-delete (plist-get todo :id))))))
+
+(defcomponent vui-todo-demo ()
+  :state ((todos (list (list :id (cl-incf vui--todo-counter) :text "Learn vui.el" :done nil)
+                       (list :id (cl-incf vui--todo-counter) :text "Build something cool" :done nil)
+                       (list :id (cl-incf vui--todo-counter) :text "Share with others" :done nil)))
+          (new-text ""))
+  :render
+  (vui-vstack
+   :spacing 1
+   (vui-text "Todo List Demo" :face 'bold)
+   (vui-text "Dynamic list with vui-list" :face 'font-lock-doc-face)
+
+   ;; Add new todo
+   (vui-hstack
+    (vui-field new-text
+               :size 25
+               :placeholder "New todo..."
+               :on-change (lambda (v) (vui-set-state :new-text v)))
+    (vui-button "Add"
+                :on-click (lambda ()
+                            (when (not (string-empty-p new-text))
+                              (vui-set-state
+                               :todos (append todos
+                                              (list (list :id (cl-incf vui--todo-counter)
+                                                          :text new-text
+                                                          :done nil))))
+                              (vui-set-state :new-text "")))))
+
+   ;; Todo items
+   (vui-vstack
+    (vui-list todos
+              (lambda (todo)
+                (vui-component 'vui-todo-item
+                               :todo todo
+                               :on-toggle (lambda (id)
+                                            (vui-set-state
+                                             :todos (mapcar (lambda (item)
+                                                              (if (eq (plist-get item :id) id)
+                                                                  (plist-put (copy-sequence item) :done
+                                                                             (not (plist-get item :done)))
+                                                                item))
+                                                            todos)))
+                               :on-delete (lambda (id)
+                                            (vui-set-state
+                                             :todos (cl-remove-if (lambda (item)
+                                                                    (eq (plist-get item :id) id))
+                                                                  todos)))))
+              (lambda (todo) (plist-get todo :id))))
+
+   ;; Stats
+   (vui-hstack
+    (vui-text (format "Total: %d" (length todos)))
+    (vui-text (format "Done: %d" (cl-count-if (lambda (item) (plist-get item :done)) todos))))
+
+   (vui-text "TAB: navigate | SPC: toggle | RET: activate" :face 'font-lock-comment-face)))
+
+(defun vui-todo-demo ()
+  "Show a todo list demo.
+Demonstrates vui-list for dynamic lists with keys."
+  (interactive)
+  (vui-mount (vui-component 'vui-todo-demo) "*vui-todo-demo*"))
 
 (provide 'vui)
 ;;; vui.el ends here
