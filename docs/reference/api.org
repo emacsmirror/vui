@@ -21,14 +21,14 @@ Define a component named NAME.
 
 *** Body Keywords
 
-| Keyword         | Required | Description                                      |
-|-----------------+----------+--------------------------------------------------|
-| =:state=        | No       | =(VAR INITIAL)...= - local state variables       |
-| =:on-mount=     | No       | Form run after first render                      |
-| =:on-update=    | No       | Form run after re-render (not first)             |
-| =:on-unmount=   | No       | Form run before removal                          |
-| =:should-update=| No       | Return t to allow re-render, nil to skip         |
-| =:render=       | Yes      | The render expression (must return a vnode)      |
+| Keyword          | Required | Description                                 |
+|------------------+----------+---------------------------------------------|
+| =:state=         | No       | =(VAR INITIAL)...= - local state variables  |
+| =:on-mount=      | No       | Form run after first render                 |
+| =:on-update=     | No       | Form run after re-render (not first)        |
+| =:on-unmount=    | No       | Form run before removal                     |
+| =:should-update= | No       | Return t to allow re-render, nil to skip    |
+| =:render=        | Yes      | The render expression (must return a vnode) |
 
 *** Available Variables in Body
 
