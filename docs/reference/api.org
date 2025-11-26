@@ -325,7 +325,8 @@ Fixed-width container for CHILD.
 (vui-table &rest ARGS) -> vnode
 #+end_src
 
-Create a table layout.
+Create a table layout. Cell contents can be strings or vnodes (including
+interactive widgets like buttons, fields, and components).
 
 | Property   | Type   | Description                               |
 |------------+--------+-------------------------------------------|
@@ -333,6 +334,9 @@ Create a table layout.
 | =:rows=    | list   | List of rows, each a list of cells        |
 | =:border=  | symbol | nil, :ascii, or :unicode                  |
 | =:key=     | any    | Reconciliation key                        |
+
+When =:border= is set, cells are automatically padded with 1 space on each
+side for readability (e.g., =| value |= instead of =|value|=).
 
 *** Column Spec Properties
 
@@ -343,12 +347,43 @@ Create a table layout.
 | =:min-width= | integer | Minimum width, expand as needed |
 | =:align=     | keyword | :left (default), :center, :right |
 
+*** Basic Example
+
 #+begin_src elisp
 (vui-table
  :columns '((:header "Name" :min-width 15)
             (:header "Age" :width 5 :align :right))
  :rows '(("Alice" "30")
          ("Bob" "25"))
+ :border :ascii)
+#+end_src
+
+*** Interactive Cells
+
+Cells can contain any vnode, including buttons and components:
+
+#+begin_src elisp
+(vui-table
+ :columns '((:header "Item" :width 20)
+            (:header "Action" :width 10))
+ :rows `(("Apple" ,(vui-button "[Buy]" :on-click (lambda () (message "Bought!"))))
+         ("Banana" ,(vui-button "[Buy]" :on-click (lambda () (message "Bought!")))))
+ :border :ascii)
+#+end_src
+
+For editable tables, embed components with their own state:
+
+#+begin_src elisp
+(vui-table
+ :columns '((:header "Name" :width 15)
+            (:header "Score" :width 8))
+ :rows (mapcar (lambda (item)
+                 (list (plist-get item :name)
+                       (vui-component 'score-input
+                                      :key (plist-get item :id)
+                                      :value (plist-get item :score)
+                                      :on-change on-score-change)))
+               items)
  :border :ascii)
 #+end_src
 

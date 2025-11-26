@@ -207,10 +207,13 @@ Output:
 
 * Tables — =vui-table=
 
-Creates formatted tables with optional headers and borders:
+Creates formatted tables with columns, rows, and optional borders.
+
+** Basic Table
 
 #+begin_src elisp
 (vui-table
+ :columns '((:min-width 8) (:min-width 10) (:min-width 8))
  :rows '(("Alice" "Developer" "NYC")
          ("Bob" "Designer" "LA")
          ("Carol" "Manager" "Chicago")))
@@ -218,104 +221,121 @@ Creates formatted tables with optional headers and borders:
 
 Output:
 #+begin_example
-Alice  Developer  NYC
-Bob    Designer   LA
-Carol  Manager    Chicago
+Alice    Developer   NYC
+Bob      Designer    LA
+Carol    Manager     Chicago
 #+end_example
 
-** With Headers
+** With Headers and Borders
 
 #+begin_src elisp
 (vui-table
- :headers '("Name" "Role" "Location")
- :rows '(("Alice" "Developer" "NYC")
-         ("Bob" "Designer" "LA")
-         ("Carol" "Manager" "Chicago")))
-#+end_src
-
-Output:
-#+begin_example
-Name   Role       Location
-Alice  Developer  NYC
-Bob    Designer   LA
-Carol  Manager    Chicago
-#+end_example
-
-** With Borders
-
-*** ASCII Borders
-
-#+begin_src elisp
-(vui-table
- :headers '("Name" "Role" "Location")
+ :columns '((:header "Name" :width 8)
+            (:header "Role" :width 10)
+            (:header "Location" :width 10))
  :rows '(("Alice" "Developer" "NYC")
          ("Bob" "Designer" "LA"))
- :borders 'ascii)
+ :border :ascii)
 #+end_src
 
 Output:
 #+begin_example
-+-------+-----------+----------+
-| Name  | Role      | Location |
-+-------+-----------+----------+
-| Alice | Developer | NYC      |
-| Bob   | Designer  | LA       |
-+-------+-----------+----------+
++----------+------------+------------+
+| Name     | Role       | Location   |
++----------+------------+------------+
+| Alice    | Developer  | NYC        |
+| Bob      | Designer   | LA         |
++----------+------------+------------+
 #+end_example
 
-*** Unicode Borders
+Bordered tables automatically add padding around cell content (=| value |=
+instead of =|value|=) for readability.
+
+** Unicode Borders
 
 #+begin_src elisp
 (vui-table
- :headers '("Name" "Role")
+ :columns '((:header "Name" :width 8)
+            (:header "Role" :width 10))
  :rows '(("Alice" "Developer")
          ("Bob" "Designer"))
- :borders 'unicode)
+ :border :unicode)
 #+end_src
 
 Output:
 #+begin_example
-┌───────┬───────────┐
-│ Name  │ Role      │
-├───────┼───────────┤
-│ Alice │ Developer │
-│ Bob   │ Designer  │
-└───────┴───────────┘
+┌──────────┬────────────┐
+│ Name     │ Role       │
+├──────────┼────────────┤
+│ Alice    │ Developer  │
+│ Bob      │ Designer   │
+└──────────┴────────────┘
 #+end_example
 
-** Column Configuration
-
-Fine-tune columns with =:columns=:
+** Column Alignment
 
 #+begin_src elisp
 (vui-table
- :columns '((:header "ID" :width 5 :align right)
-            (:header "Product" :width 15 :align left)
-            (:header "Price" :width 10 :align right))
+ :columns '((:header "ID" :width 5 :align :right)
+            (:header "Product" :width 12 :align :left)
+            (:header "Price" :width 8 :align :right))
  :rows '(("1" "Widget" "$9.99")
          ("2" "Gadget" "$19.99")
          ("3" "Gizmo" "$29.99"))
- :borders 'ascii)
+ :border :ascii)
 #+end_src
 
 Output:
 #+begin_example
-+------+-----------------+-----------+
-|   ID | Product         |     Price |
-+------+-----------------+-----------+
-|    1 | Widget          |     $9.99 |
-|    2 | Gadget          |    $19.99 |
-|    3 | Gizmo           |    $29.99 |
-+------+-----------------+-----------+
++-------+--------------+----------+
+|    ID | Product      |    Price |
++-------+--------------+----------+
+|     1 | Widget       |    $9.99 |
+|     2 | Gadget       |   $19.99 |
+|     3 | Gizmo        |   $29.99 |
++-------+--------------+----------+
 #+end_example
 
 ** Column Properties
 
-| Property  | Description                      |
-|-----------+----------------------------------|
-| =:header= | Column header text               |
-| =:width=  | Fixed width (auto if omitted)    |
-| =:align=  | =left=, =center=, or =right=     |
+| Property     | Description                      |
+|--------------+----------------------------------|
+| =:header=    | Column header text               |
+| =:width=     | Fixed width in characters        |
+| =:min-width= | Minimum width, expands as needed |
+| =:align=     | =:left=, =:center=, or =:right=  |
+
+** Interactive Cells
+
+Table cells can contain any vnode, including buttons, fields, and components:
+
+#+begin_src elisp
+(vui-table
+ :columns '((:header "Item" :width 12)
+            (:header "Qty" :width 6)
+            (:header "Action" :width 10))
+ :rows `(("Apples" "5" ,(vui-button "[Edit]" :on-click edit-apples))
+         ("Oranges" "3" ,(vui-button "[Edit]" :on-click edit-oranges)))
+ :border :ascii)
+#+end_src
+
+For editable tables with complex state, embed components in cells:
+
+#+begin_src elisp
+(vui-table
+ :columns '((:header "Name" :width 15)
+            (:header "Score" :width 8))
+ :rows (mapcar (lambda (item)
+                 (list (plist-get item :name)
+                       (vui-component 'editable-score
+                                      :key (plist-get item :id)
+                                      :value (plist-get item :score)
+                                      :on-change handle-change)))
+               items)
+ :border :ascii)
+#+end_src
+
+See =docs/examples/05-wine-tasting.el= for a complete editable table example.
 
 * Dynamic Lists — =vui-list=
 

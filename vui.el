@@ -1886,13 +1886,15 @@ HEADER-P indicates if this is a header row."
                        (is-vnode (and (not (stringp cell))
                                       (not (null cell))
                                       (not header-p)))
+                       ;; For component vnodes, width returns 0 so skip padding
+                       (is-component (and is-vnode (vui-vnode-component-p cell)))
                        (content (if is-vnode
                                     (vui--cell-to-string cell)
                                   (cond ((stringp cell) cell)
                                         ((null cell) "")
                                         (t (format "%s" cell)))))
                        (content-width (string-width content))
-                       (padding (max 0 (- width content-width)))
+                       (padding (if is-component 0 (max 0 (- width content-width))))
                        (face (when header-p 'bold)))
                   ;; Left cell padding
                   (when (> cell-padding 0)
