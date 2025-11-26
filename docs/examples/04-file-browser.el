@@ -200,7 +200,9 @@
   ;; Reload when path changes
   (let ((path (use-file-browser-path)))
     (when (not (equal path (plist-get prev-state :last-path)))
+      ;; Set last-path immediately to prevent re-triggering on next update
       (vui-batch
+       (vui-set-state :last-path path)
        (vui-set-state :loading t)
        (vui-set-state :entries nil)
        (vui-set-state :error nil)
@@ -219,8 +221,7 @@
                                     (seq-filter (lambda (f)
                                                   (not (member (car f) '("." ".."))))
                                                 files)))
-             (vui-set-state :loading nil)
-             (vui-set-state :last-path path)))
+             (vui-set-state :loading nil)))
         (error
          (vui-batch
           (vui-set-state :error (error-message-string err))
