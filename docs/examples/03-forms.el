@@ -386,8 +386,7 @@
                 :on-click on-toggle)
     (vui-text (format " %s" title) :face 'bold))
    (when expanded
-     (vui-box :padding-left 2
-              children))))
+     (vui-box children :padding-left 2))))
 
 
 (defcomponent settings-form ()
