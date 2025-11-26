@@ -1,7 +1,7 @@
 #+TITLE: vui.el: Design Document
 #+author: Boris
 #+date: November 2025
-#+version: 0.1 (Draft)
+#+version: 1.0 (Feature Complete)
 
 *vui.el* (Virtual UI) is a declarative, component-based UI library for Emacs. It brings React-like patterns to buffer-based interfaces: define components as functions of state, compose them into trees, and let the library handle efficient updates through reconciliation. Built on top of =widget.el= for battle-tested input handling, vui.el adds state management, automatic re-rendering, cursor preservation, and layout primitives for building complex, interactive UIs in Emacs buffers.
 
@@ -4570,125 +4570,122 @@ Signature: (lambda (error instance phase) ...)")
 :PROPERTIES:
 :CUSTOM_ID: implementation-roadmap
 :END:
-** Phase 1: Core Foundation (MVP)
+** Phase 1: Core Foundation (MVP) ✓
 :PROPERTIES:
 :CUSTOM_ID: phase-1-core-foundation-mvp
 :END:
 *Goal*: Render static component trees with basic interactivity
 
-*1.1 Data Structures* - [ ] Define all cl-defstructs (vnode types,
-instance, context, scheduler) - [ ] Component registry (hash-table
-mapping name -> definition) - [ ] Basic =defcomponent= macro (props only,
-no state yet)
+*1.1 Data Structures* - [X] Define all cl-defstructs (vnode types,
+instance, context, scheduler) - [X] Component registry (hash-table
+mapping name -> definition) - [X] Basic =defcomponent= macro (props and
+state)
 
-*1.2 Initial Rendering* - [ ] Render primitives: text, button, newline,
-space - [ ] Fragment support - [ ] Marker-based region tracking
-(start/end per instance) - [ ] Overlay creation for buttons - [ ]
+*1.2 Initial Rendering* - [X] Render primitives: text, button, newline,
+space - [X] Fragment support - [X] Marker-based region tracking
+(start/end per instance) - [X] Overlay creation for buttons - [X]
 Read-only text protection
 
-*1.3 Basic Interactivity* - [ ] Button click handling via overlays - [ ]
-Field editing with on-change callback - [ ] Custom keymap support on
-fields - [ ] TAB/S-TAB navigation between interactive elements
+*1.3 Basic Interactivity* - [X] Button click handling via widget.el - [X]
+Field editing with on-change callback - [X] Checkbox and select widgets - [X]
+TAB/S-TAB navigation between interactive elements (via widget.el)
 
-*1.4 Simple State* - [ ] =let-state= macro - [ ] State mutation
-triggering re-render - [ ] Full tree re-render (no diffing yet ---
-rebuild everything)
+*1.4 Simple State* - [X] =:state= in defcomponent - [X] =vui-set-state= for
+state mutation triggering re-render - [X] Full tree re-render
 
 *Deliverable*: Can render a static form with buttons and fields that
 respond to user input.
 
 
-** Phase 2: Reconciliation
+** Phase 2: Reconciliation ✓
 :PROPERTIES:
 :CUSTOM_ID: phase-2-reconciliation
 :END:
 *Goal*: Efficient updates via diffing
 
-*2.1 Virtual Tree Diffing* - [ ] Implement =vui--reconcile= main
-function - [ ] Type comparison logic - [ ] Key-based child matching - [
-] Operation generation (insert, delete, replace, update-props)
+*2.1 Virtual Tree Diffing* - [X] Implement =vui--reconcile-component= - [X]
+Type comparison logic - [X] Key-based child matching - [X] Index-based
+fallback matching
 
-*2.2 Commit Phase* - [ ] Apply delete operations (from end to start) - [
-] Apply insert operations - [ ] Apply replace operations - [ ] Apply
-property update operations - [ ] Operation sorting for safe application
+*2.2 Commit Phase* - [X] Clear and re-render approach with widget reuse -
+[X] Unmount callbacks for removed children - [X] Efficient widget.el
+integration
 
-*2.3 Cursor Preservation* - [ ] Cursor context capture before
-mutations - [ ] Key-path based restoration - [ ] Structural path
-fallback - [ ] Destroyed component handling (go to where it was) - [ ]
-Field edit protection (don't update focused field)
+*2.3 Cursor Preservation* - [X] Widget index tracking before mutations -
+[X] Restore cursor to same widget index after render - [X] Fallback to
+buffer start if widget removed
 
 *Deliverable*: Can add/remove items from a list without full re-render;
 cursor stays in place.
 
 
-** Phase 3: Advanced State
+** Phase 3: Advanced State ✓
 :PROPERTIES:
 :CUSTOM_ID: phase-3-advanced-state
 :END:
 *Goal*: Full state management capabilities
 
-*3.1 Effects System* - [ ] =use-effect= implementation - [ ] Dependency
-array tracking - [ ] Cleanup function support - [ ] Effect execution
+*3.1 Effects System* - [X] =use-effect= implementation - [X] Dependency
+array tracking - [X] Cleanup function support - [X] Effect execution
 after commit
 
-*3.2 Additional Hooks* - [ ] =use-ref= (mutable reference without
-re-render) - [ ] =use-callback= (memoised callbacks) - [ ] =let-memo=
-(memoised computed values) - [ ] =use-reducer= (reducer pattern for
-complex state)
+*3.2 Additional Hooks* - [X] =use-ref= (mutable reference without
+re-render) - [X] =use-callback= (memoised callbacks) - [X] =use-memo=
+(memoised computed values) - [X] =use-callback*= and =use-memo*= with
+custom comparison modes
 
-*3.3 Context System* - [ ] =defcontext= macro - [ ] Provider vnode and
-rendering - [ ] Context consumption via =use-NAME= - [ ] Context change
-propagation to consumers
+*3.3 Context System* - [X] =defcontext= macro - [X] Provider vnode and
+rendering - [X] Context consumption via auto-generated =use-NAME= - [X]
+Context change propagation to consumers
 
 *Deliverable*: Can build components with side effects, shared state, and
 deep data passing.
 
 
-** Phase 4: Layout & Polish
+** Phase 4: Layout & Polish ✓
 :PROPERTIES:
 :CUSTOM_ID: phase-4-layout-polish
 :END:
 *Goal*: Production-ready features
 
-*4.1 Layout Primitives* - [ ] =vui-hstack= with spacing - [ ] =vui-vstack=
-with spacing and indent - [ ] =vui-indent= with render context
-propagation - [ ] =vui-box= with fixed width and alignment - [ ] Basic
-=vui-table= support
+*4.1 Layout Primitives* - [X] =vui-hstack= with spacing - [X] =vui-vstack=
+with spacing and indent - [X] =vui-box= with fixed width and alignment -
+[X] =vui-table= with headers, borders (ascii/unicode), column alignment -
+[X] =vui-list= for dynamic list rendering with key function
 
-*4.2 Lifecycle Hooks* - [ ] =on-mount= (after first render) - [ ]
-=on-update= (after re-render, with prev props/state) - [ ] =on-unmount=
-(before removal) - [ ] Proper hook ordering (children before parents for
-mount)
+*4.2 Lifecycle Hooks* - [X] =on-mount= (after first render) - [X]
+=on-update= (after re-render, with prev props/state) - [X] =on-unmount=
+(before removal) - [X] Proper hook ordering (children first for unmount)
 
-*4.3 Error Handling* - [ ] =vui-error-boundary= component - [ ] Lifecycle
-error catching and propagation - [ ] Event handler error wrapping - [ ]
-=vui-reset-component= for recovery
+*4.3 Error Handling* - [X] =vui-error-boundary= component - [X] Lifecycle
+error catching with configurable handlers - [X] Event handler error
+wrapping - [X] =vui-reset-error-boundary= for recovery
 
-*4.4 Scheduler Improvements* - [ ] =vui-batch= for grouping state
-updates - [ ] Idle-time rendering via timer - [ ] =vui-flush-sync= for
-immediate updates
+*4.4 Scheduler Improvements* - [X] =vui-batch= for grouping state
+updates - [X] Idle-time rendering via =vui-idle-render-delay= - [X]
+=vui-flush-sync= for immediate updates
 
 *Deliverable*: Full-featured UI library with layouts, error handling,
 and optimised updates.
 
 
-** Phase 5: Optimisation & Tooling
+** Phase 5: Optimisation & Tooling ✓
 :PROPERTIES:
 :CUSTOM_ID: phase-5-optimisation-tooling
 :END:
 *Goal*: Performance and developer experience
 
-*5.1 Performance* - [ ] =should-update= optimisation (skip re-render if
-no changes) - [ ] Memo comparison modes (eq, equal, custom) - [ ] Render
-timing instrumentation
+*5.1 Performance* - [X] =should-update= optimisation (skip re-render if
+no changes) - [X] Memo comparison modes (eq, equal, custom) - [X] Render
+timing instrumentation (=vui-timing-enabled=, =vui-report-timing=)
 
-*5.2 Developer Tools* - [ ] Component inspector (show tree structure) -
-[ ] State viewer (show current state of instances) - [ ] Render cycle
-debugging/logging
+*5.2 Developer Tools* - [X] Component inspector (=vui-inspect=) -
+[X] State viewer (=vui-inspect-state=) - [X] Render cycle
+debugging/logging (=vui-debug-enabled=, =vui-debug-show=)
 
-*5.3 Documentation & Examples* - [ ] API documentation with docstrings -
-[ ] Tutorial: building a todo app - [ ] Example: file browser - [ ]
-Example: form with validation
+*5.3 Documentation & Examples* - [X] API documentation with docstrings -
+[ ] Comprehensive user guide - [ ] Tutorial: building a todo app - [ ]
+Example: file browser - [ ] Example: form with validation
 
 *Deliverable*: Production-ready library with tooling and documentation.
 
@@ -4697,12 +4694,12 @@ Example: form with validation
 :PROPERTIES:
 :CUSTOM_ID: milestones
 :END:
-| Milestone              | Phase | Deliverable                                                  |
-|------------------------+-------+--------------------------------------------------------------|
-| *M1: Hello World*      | 1     | Static components with basic state and interaction           |
-| *M2: Todo App*         | 2     | List with add/remove, efficient updates, cursor preservation |
-| *M3: Feature Complete* | 4     | All core features working                                    |
-| *M4: Production Ready* | 5     | Optimised, documented, tested                                |
+| Milestone              | Phase | Deliverable                                                  | Status |
+|------------------------+-------+--------------------------------------------------------------+--------|
+| *M1: Hello World*      | 1     | Static components with basic state and interaction           | ✓      |
+| *M2: Todo App*         | 2     | List with add/remove, efficient updates, cursor preservation | ✓      |
+| *M3: Feature Complete* | 4     | All core features working                                    | ✓      |
+| *M4: Production Ready* | 5     | Optimised, documented, tested                                | WIP    |
 
 
 ** Testing Strategy
