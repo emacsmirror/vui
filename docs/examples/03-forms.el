@@ -322,7 +322,7 @@
 
 (defcomponent signup-wizard ()
   :state ((step 1)
-          (data (:name nil :email nil :plan "free"))
+          (data '(:name nil :email nil :plan "free"))
           (complete nil))
 
   :render
@@ -391,13 +391,13 @@
 
 
 (defcomponent settings-form ()
-  :state ((sections (:general t :notifications nil :privacy nil))
-          (settings (:theme "light"
-                     :font-size 14
-                     :email-notify t
-                     :push-notify nil
-                     :share-data nil
-                     :public-profile nil)))
+  :state ((sections '(:general t :notifications nil :privacy nil))
+          (settings '(:theme "light"
+                      :font-size 14
+                      :email-notify t
+                      :push-notify nil
+                      :share-data nil
+                      :public-profile nil)))
 
   :render
   (let ((toggle-section (lambda (section)
