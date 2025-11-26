@@ -187,6 +187,9 @@ PROPS is a plist accepting :on-click, :face, :disabled, :key."
   "Render VNODE tree into BUFFER (default: current buffer).
 Clears the buffer before rendering."
   (with-current-buffer (or buffer (current-buffer))
+    ;; TODO: Implement cursor preservation across re-renders.
+    ;; Should track position relative to logical elements (keys/components),
+    ;; not buffer positions. Will be part of component instance system.
     (let ((inhibit-read-only t))
       (kill-all-local-variables)
       (remove-overlays)
