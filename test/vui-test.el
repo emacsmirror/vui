@@ -1032,9 +1032,10 @@
                     :columns '((:header "A" :width 3) (:header "B" :width 3))
                     :rows '(("1" "2"))
                     :border :ascii))
-      (expect (buffer-string) :to-match "\\+---\\+---\\+")
-      (expect (buffer-string) :to-match "|A  |B  |")
-      (expect (buffer-string) :to-match "|1  |2  |")))
+      ;; Width 3 + padding 1 on each side = 5 per column
+      (expect (buffer-string) :to-match "\\+-----\\+-----\\+")
+      (expect (buffer-string) :to-match "| A   | B   |")
+      (expect (buffer-string) :to-match "| 1   | 2   |")))
 
   (it "renders table with unicode borders"
     (with-temp-buffer
