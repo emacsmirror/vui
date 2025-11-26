@@ -227,7 +227,8 @@ ERROR is the error object, and CONTEXT is additional information.")
   render-fn         ; (lambda (props state) vnode)
   on-mount          ; (lambda ()) called after first render
   on-update         ; (lambda (prev-props prev-state)) called after re-render
-  on-unmount)       ; (lambda ()) called before removal
+  on-unmount        ; (lambda ()) called before removal
+  should-update)    ; (lambda (new-props new-state old-props old-state)) -> bool or nil
 
 ;; Component instance - a live component
 (cl-defstruct (vui-instance (:constructor vui-instance--create))
@@ -240,6 +241,7 @@ ERROR is the error object, and CONTEXT is additional information.")
   parent      ; Parent vui-instance or nil for root
   children    ; Child vui-instances
   buffer      ; Buffer this instance is rendered into
+  cached-vtree  ; Last rendered vtree (for should-update optimization)
   mounted-p   ; Has this been mounted?
   effects     ; Alist of (effect-id . (deps . cleanup-fn)) for use-effect
   refs        ; Hash table of ref-id -> (value . nil) for use-ref
@@ -302,10 +304,11 @@ BODY contains keyword sections:
   :on-mount FORM - called after first render (optional)
   :on-update FORM - called after re-render with prev-props, prev-state (optional)
   :on-unmount FORM - called before removal (optional)
+  :should-update FORM - return t to allow re-render, nil to skip (optional)
   :render FORM - the render expression (required)
 
 All forms have access to props as variables, state variables,
-and `children' for nested content. on-update also has access to
+and `children' for nested content. on-update and should-update have access to
 `prev-props' and `prev-state' for the previous values.
 
 Example:
@@ -314,6 +317,8 @@ Example:
     :on-mount (message \"Mounted: %s\" name)
     :on-update (when (not (equal prev-props --props--))
                  (message \"Props changed!\"))
+    :should-update (or (not (equal name (plist-get prev-props :name)))
+                       (not (equal count (plist-get prev-state :count))))
     :on-unmount (message \"Unmounted\")
     :render
     (vui-fragment
@@ -325,6 +330,8 @@ Example:
         (on-mount-form nil)
         (on-update-form nil)
         (on-unmount-form nil)
+        (should-update-form nil)
+        (should-update-provided nil)
         (rest body))
     ;; Parse keyword arguments
     (while rest
@@ -337,6 +344,9 @@ Example:
                           rest (cddr rest)))
         (:on-unmount (setq on-unmount-form (cadr rest)
                            rest (cddr rest)))
+        (:should-update (setq should-update-form (cadr rest)
+                              should-update-provided t
+                              rest (cddr rest)))
         (:render (setq render-form (cadr rest)
                        rest (cddr rest)))
         (_ (error "Unknown defcomponent keyword: %s" (car rest)))))
@@ -380,7 +390,8 @@ Example:
              :render-fn ,(make-body-fn render-form)
              :on-mount ,(when on-mount-form (make-body-fn on-mount-form))
              :on-update ,(when on-update-form (make-update-fn on-update-form))
-             :on-unmount ,(when on-unmount-form (make-body-fn on-unmount-form))))
+             :on-unmount ,(when on-unmount-form (make-body-fn on-unmount-form))
+             :should-update ,(when should-update-provided (make-update-fn should-update-form))))
            ',name)))))
 
 ;;; Constructor Functions
@@ -1228,14 +1239,26 @@ INSTANCE is the component instance."
          (old-children (vui-instance-children instance))
          (def (vui-instance-def instance))
          (render-fn (vui-component-def-render-fn def))
+         (should-update-fn (vui-component-def-should-update def))
          (props (vui-instance-props instance))
          (state (vui-instance-state instance))
          (first-render-p (not (vui-instance-mounted-p instance)))
-         ;; Capture previous values for on-update
+         ;; Capture previous values for on-update/should-update
          (prev-props (vui-instance-prev-props instance))
          (prev-state (vui-instance-prev-state instance))
-         (vtree (funcall render-fn props state)))
-    (vui--render-vnode vtree)
+         ;; Check should-update for re-renders
+         (should-render-p (or first-render-p
+                              (not should-update-fn)
+                              (funcall should-update-fn props state prev-props prev-state)))
+         ;; Get vtree: either fresh render or cached
+         (vtree (if should-render-p
+                    (let ((new-vtree (funcall render-fn props state)))
+                      (setf (vui-instance-cached-vtree instance) new-vtree)
+                      new-vtree)
+                  ;; Use cached vtree
+                  (vui-instance-cached-vtree instance))))
+    (when vtree
+      (vui--render-vnode vtree))
     ;; Update children list for next reconciliation
     (let ((new-children (nreverse vui--new-children)))
       ;; Call on-unmount for children that were removed
@@ -1253,13 +1276,13 @@ INSTANCE is the component instance."
            (vui-component-def-on-mount def)
            instance
            props state))
-      ;; Re-render: call on-update with previous values
-      ;; Note: prev-props/prev-state may be nil for components with no props/state
-      (vui--call-lifecycle-hook
-       "on-update"
-       (vui-component-def-on-update def)
-       instance
-       props state prev-props prev-state))
+      ;; Re-render: call on-update only if we actually rendered
+      (when should-render-p
+        (vui--call-lifecycle-hook
+         "on-update"
+         (vui-component-def-on-update def)
+         instance
+         props state prev-props prev-state)))
     ;; Store current props/state for next render's on-update
     ;; Use copy-tree to deep copy, since plist-put modifies in place
     (setf (vui-instance-prev-props instance) (copy-tree props))

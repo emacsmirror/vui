@@ -1399,4 +1399,120 @@
                       :to-equal "42"))
           (kill-buffer "*test-flush*"))))))
 
+(describe "should-update"
+  (it "always renders on first render"
+    (let ((vui-idle-render-delay nil)
+          (render-count 0))
+      (defcomponent always-skip ()
+        :should-update nil  ; Always return nil - but first render still happens
+        :render (progn
+                  (setq render-count (1+ render-count))
+                  (vui-text "OK")))
+      (vui-mount (vui-component 'always-skip) "*test-first-render*")
+      (unwind-protect
+          (expect render-count :to-equal 1)
+        (kill-buffer "*test-first-render*"))))
+
+  (it "skips render when should-update returns nil"
+    (let ((vui-idle-render-delay nil)
+          (render-count 0))
+      (defcomponent skip-renders ()
+        :state ((count 0))
+        :should-update nil  ; Always skip re-renders
+        :render (progn
+                  (setq render-count (1+ render-count))
+                  (vui-text (number-to-string count))))
+      (let ((instance (vui-mount (vui-component 'skip-renders) "*test-skip*")))
+        (unwind-protect
+            (progn
+              (expect render-count :to-equal 1)
+              (expect (with-current-buffer "*test-skip*" (buffer-string))
+                      :to-equal "0")
+              ;; Change state and trigger re-render
+              (with-current-buffer "*test-skip*"
+                (let ((vui--current-instance instance)
+                      (vui--root-instance instance))
+                  (vui-set-state :count 42)))
+              ;; Render function should not have been called
+              (expect render-count :to-equal 1)
+              ;; But content is still there (cached vtree)
+              (expect (with-current-buffer "*test-skip*" (buffer-string))
+                      :to-equal "0"))
+          (kill-buffer "*test-skip*")))))
+
+  (it "renders when should-update returns t"
+    (let ((vui-idle-render-delay nil)
+          (render-count 0))
+      (defcomponent always-render ()
+        :state ((count 0))
+        :should-update t  ; Always re-render
+        :render (progn
+                  (setq render-count (1+ render-count))
+                  (vui-text (number-to-string count))))
+      (let ((instance (vui-mount (vui-component 'always-render) "*test-always*")))
+        (unwind-protect
+            (progn
+              (expect render-count :to-equal 1)
+              ;; Trigger re-render
+              (with-current-buffer "*test-always*"
+                (let ((vui--current-instance instance)
+                      (vui--root-instance instance))
+                  (vui-set-state :count 42)))
+              ;; Should have re-rendered
+              (expect render-count :to-equal 2)
+              (expect (with-current-buffer "*test-always*" (buffer-string))
+                      :to-equal "42"))
+          (kill-buffer "*test-always*")))))
+
+  (it "can compare prev values in should-update"
+    (let ((vui-idle-render-delay nil)
+          (render-count 0))
+      (defcomponent smart-update ()
+        :state ((important 0) (unimportant 0))
+        ;; Only re-render when important changes
+        :should-update (not (equal important (plist-get prev-state :important)))
+        :render (progn
+                  (setq render-count (1+ render-count))
+                  (vui-text (format "i=%d u=%d" important unimportant))))
+      (let ((instance (vui-mount (vui-component 'smart-update) "*test-smart*")))
+        (unwind-protect
+            (progn
+              (expect render-count :to-equal 1)
+              ;; Change unimportant - should NOT re-render
+              (with-current-buffer "*test-smart*"
+                (let ((vui--current-instance instance)
+                      (vui--root-instance instance))
+                  (vui-set-state :unimportant 999)))
+              (expect render-count :to-equal 1)
+              ;; Change important - SHOULD re-render
+              (with-current-buffer "*test-smart*"
+                (let ((vui--current-instance instance)
+                      (vui--root-instance instance))
+                  (vui-set-state :important 42)))
+              (expect render-count :to-equal 2)
+              (expect (with-current-buffer "*test-smart*" (buffer-string))
+                      :to-equal "i=42 u=999"))
+          (kill-buffer "*test-smart*")))))
+
+  (it "does not call on-update when render skipped"
+    (let ((vui-idle-render-delay nil)
+          (update-count 0))
+      (defcomponent no-update-call ()
+        :state ((val 0))
+        :should-update nil
+        :on-update (setq update-count (1+ update-count))
+        :render (vui-text "OK"))
+      (let ((instance (vui-mount (vui-component 'no-update-call) "*test-no-update*")))
+        (unwind-protect
+            (progn
+              (expect update-count :to-equal 0)
+              ;; Trigger re-render (but should be skipped)
+              (with-current-buffer "*test-no-update*"
+                (let ((vui--current-instance instance)
+                      (vui--root-instance instance))
+                  (vui-set-state :val 42)))
+              ;; on-update should not have been called
+              (expect update-count :to-equal 0))
+          (kill-buffer "*test-no-update*"))))))
+
 ;;; vui-test.el ends here
