@@ -502,7 +502,54 @@
             (progn
               (expect mount-props :to-equal "test")
               (expect mount-state :to-equal 42))
-          (kill-buffer "*test-args*"))))))
+          (kill-buffer "*test-args*")))))
+
+  (it "calls on-update after re-render"
+    (let ((update-count 0)
+          (captured-prev-state nil))
+      (defcomponent test-update ()
+        :state ((count 0))
+        :on-update (progn
+                     (setq update-count (1+ update-count))
+                     (setq captured-prev-state (plist-get prev-state :count)))
+        :render (vui-text (number-to-string count)))
+      (let ((instance (vui-mount (vui-component 'test-update) "*test-update*")))
+        (unwind-protect
+            (progn
+              ;; on-update not called on first render
+              (expect update-count :to-equal 0)
+              ;; Trigger re-render
+              (setf (vui-instance-state instance)
+                    (plist-put (vui-instance-state instance) :count 5))
+              (vui--rerender-instance instance)
+              ;; on-update should have been called
+              (expect update-count :to-equal 1)
+              ;; prev-state should have the old value
+              (expect captured-prev-state :to-equal 0)
+              ;; Another re-render
+              (setf (vui-instance-state instance)
+                    (plist-put (vui-instance-state instance) :count 10))
+              (vui--rerender-instance instance)
+              (expect update-count :to-equal 2)
+              (expect captured-prev-state :to-equal 5))
+          (kill-buffer "*test-update*")))))
+
+  (it "provides prev-props to on-update"
+    (let ((captured-prev-label nil))
+      (defcomponent test-update-props (label)
+        :on-update (setq captured-prev-label (plist-get prev-props :label))
+        :render (vui-text label))
+      (let ((instance (vui-mount (vui-component 'test-update-props :label "first")
+                                 "*test-update-props*")))
+        (unwind-protect
+            (progn
+              ;; Update props and re-render
+              (setf (vui-instance-props instance)
+                    (plist-put (vui-instance-props instance) :label "second"))
+              (vui--rerender-instance instance)
+              ;; on-update should have captured the previous label
+              (expect captured-prev-label :to-equal "first"))
+          (kill-buffer "*test-update-props*"))))))
 
 (describe "reconciliation"
   (it "preserves child component state across parent re-render"

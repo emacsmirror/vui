@@ -183,6 +183,7 @@
   initial-state-fn  ; (lambda (props) state) or nil
   render-fn         ; (lambda (props state) vnode)
   on-mount          ; (lambda ()) called after first render
+  on-update         ; (lambda (prev-props prev-state)) called after re-render
   on-unmount)       ; (lambda ()) called before removal
 
 ;; Component instance - a live component
@@ -200,7 +201,9 @@
   effects     ; Alist of (effect-id . (deps . cleanup-fn)) for use-effect
   refs        ; Hash table of ref-id -> (value . nil) for use-ref
   callbacks   ; Hash table of callback-id -> (deps . fn) for use-callback
-  memos)      ; Hash table of memo-id -> (deps . value) for let-memo
+  memos       ; Hash table of memo-id -> (deps . value) for let-memo
+  prev-props  ; Props from previous render (for on-update)
+  prev-state) ; State from previous render (for on-update)
 
 ;; Registry of component definitions
 (defvar vui--component-registry (make-hash-table :test 'eq)
@@ -254,16 +257,20 @@ ARGS is a list of prop names the component accepts.
 BODY contains keyword sections:
   :state ((var initial) ...) - local state variables
   :on-mount FORM - called after first render (optional)
+  :on-update FORM - called after re-render with prev-props, prev-state (optional)
   :on-unmount FORM - called before removal (optional)
   :render FORM - the render expression (required)
 
 All forms have access to props as variables, state variables,
-and `children' for nested content.
+and `children' for nested content. on-update also has access to
+`prev-props' and `prev-state' for the previous values.
 
 Example:
   (defcomponent greeting (name)
     :state ((count 0))
     :on-mount (message \"Mounted: %s\" name)
+    :on-update (when (not (equal prev-props --props--))
+                 (message \"Props changed!\"))
     :on-unmount (message \"Unmounted\")
     :render
     (vui-fragment
@@ -273,6 +280,7 @@ Example:
   (let ((state-spec nil)
         (render-form nil)
         (on-mount-form nil)
+        (on-update-form nil)
         (on-unmount-form nil)
         (rest body))
     ;; Parse keyword arguments
@@ -282,6 +290,8 @@ Example:
                       rest (cddr rest)))
         (:on-mount (setq on-mount-form (cadr rest)
                          rest (cddr rest)))
+        (:on-update (setq on-update-form (cadr rest)
+                          rest (cddr rest)))
         (:on-unmount (setq on-unmount-form (cadr rest)
                            rest (cddr rest)))
         (:render (setq render-form (cadr rest)
@@ -300,6 +310,18 @@ Example:
                                        `(,var (plist-get --state-- ,(intern (format ":%s" var)))))
                                      state-vars)
                            (children (plist-get --props-- :children)))
+                       ,form)))
+                (make-update-fn (form)
+                  `(lambda (--props-- --state-- --prev-props-- --prev-state--)
+                     (let (,@(mapcar (lambda (arg)
+                                       `(,arg (plist-get --props-- ,(intern (format ":%s" arg)))))
+                                     args)
+                           ,@(mapcar (lambda (var)
+                                       `(,var (plist-get --state-- ,(intern (format ":%s" var)))))
+                                     state-vars)
+                           (children (plist-get --props-- :children))
+                           (prev-props --prev-props--)
+                           (prev-state --prev-state--))
                        ,form))))
         `(progn
            (vui--register-component
@@ -314,6 +336,7 @@ Example:
                                   nil)
              :render-fn ,(make-body-fn render-form)
              :on-mount ,(when on-mount-form (make-body-fn on-mount-form))
+             :on-update ,(when on-update-form (make-update-fn on-update-form))
              :on-unmount ,(when on-unmount-form (make-body-fn on-unmount-form))))
            ',name)))))
 
@@ -1001,6 +1024,9 @@ Returns (WIDGET-INDEX . DELTA) or (nil . (LINE . COL))."
          (props (vui-instance-props instance))
          (state (vui-instance-state instance))
          (first-render-p (not (vui-instance-mounted-p instance)))
+         ;; Capture previous values for on-update
+         (prev-props (vui-instance-prev-props instance))
+         (prev-state (vui-instance-prev-state instance))
          (vtree (funcall render-fn props state)))
     (vui--render-vnode vtree)
     ;; Update children list for next reconciliation
@@ -1010,12 +1036,23 @@ Returns (WIDGET-INDEX . DELTA) or (nil . (LINE . COL))."
         (unless (memq old-child new-children)
           (vui--call-unmount-recursive old-child)))
       (setf (vui-instance-children instance) new-children))
-    ;; Call on-mount after first render
-    (when first-render-p
-      (setf (vui-instance-mounted-p instance) t)
-      (let ((on-mount (vui-component-def-on-mount def)))
-        (when on-mount
-          (funcall on-mount props state))))))
+    ;; Lifecycle hooks
+    (if first-render-p
+        ;; First render: call on-mount
+        (progn
+          (setf (vui-instance-mounted-p instance) t)
+          (let ((on-mount (vui-component-def-on-mount def)))
+            (when on-mount
+              (funcall on-mount props state))))
+      ;; Re-render: call on-update with previous values
+      ;; Note: prev-props/prev-state may be nil for components with no props/state
+      (let ((on-update (vui-component-def-on-update def)))
+        (when on-update
+          (funcall on-update props state prev-props prev-state))))
+    ;; Store current props/state for next render's on-update
+    ;; Use copy-tree to deep copy, since plist-put modifies in place
+    (setf (vui-instance-prev-props instance) (copy-tree props))
+    (setf (vui-instance-prev-state instance) (copy-tree state))))
 
 (defun vui--call-unmount-recursive (instance)
   "Call on-unmount for INSTANCE and all its children recursively."
