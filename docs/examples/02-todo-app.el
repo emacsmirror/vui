@@ -135,15 +135,16 @@
                     (vui-text "(no items)" :face 'font-lock-comment-face)
                   (vui-list filtered
                             (lambda (todo)
-                              (vui-component 'todo-item
-                                             :key (plist-get todo :id)
-                                             :todo todo
-                                             :on-toggle toggle-todo
-                                             :on-delete delete-todo))
+                              (vui-fragment
+                               (vui-component 'todo-item
+                                              :key (plist-get todo :id)
+                                              :todo todo
+                                              :on-toggle toggle-todo
+                                              :on-delete delete-todo)
+                               (vui-newline)))
                             (lambda (todo) (plist-get todo :id))))
 
                 ;; Stats
-                (vui-newline)
                 (vui-component 'todo-stats :todos todos))))
 
 
@@ -245,15 +246,16 @@
                     (vui-text "(no items)" :face 'font-lock-comment-face)
                   (vui-list filtered
                             (lambda (todo)
-                              (vui-component 'todo-item
-                                             :key (plist-get todo :id)
-                                             :todo todo
-                                             :on-toggle toggle-todo
-                                             :on-delete delete-todo))
+                              (vui-fragment
+                               (vui-component 'todo-item
+                                              :key (plist-get todo :id)
+                                              :todo todo
+                                              :on-toggle toggle-todo
+                                              :on-delete delete-todo)
+                               (vui-newline)))
                             (lambda (todo) (plist-get todo :id))))
 
                 ;; Stats
-                (vui-newline)
                 (vui-component 'todo-stats :todos todos))))
 
 
