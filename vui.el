@@ -1480,12 +1480,19 @@ Called from within a component's render function."
           (vui--run-pending-effects))))))
 
 (defun vui--widget-bounds (widget)
-  "Get (START . END) bounds for WIDGET."
-  (let ((from (widget-get widget :from))
-        (to (widget-get widget :to)))
-    (when (and from to)
-      (cons (if (markerp from) (marker-position from) from)
-            (if (markerp to) (marker-position to) to)))))
+  "Get (START . END) bounds for WIDGET's editable area.
+For editable fields, returns the actual text area, not widget decoration."
+  (let ((field-start (widget-field-start widget))
+        (field-end (widget-field-end widget)))
+    (if (and field-start field-end)
+        ;; Editable field - use field bounds
+        (cons field-start field-end)
+      ;; Other widgets - use widget bounds
+      (let ((from (widget-get widget :from))
+            (to (widget-get widget :to)))
+        (when (and from to)
+          (cons (if (markerp from) (marker-position from) from)
+                (if (markerp to) (marker-position to) to)))))))
 
 (defun vui--save-cursor-position ()
   "Save cursor position relative to current widget.
@@ -1536,10 +1543,10 @@ Returns (WIDGET-INDEX . DELTA) or (nil . (LINE . COL))."
               (let* ((bounds (vui--widget-bounds widget))
                      (start (car bounds))
                      (end (cdr bounds)))
-                (when start
+                (when (and start end)
                   ;; Apply delta, but cap to widget bounds
-                  (goto-char (min (+ start delta)
-                                  (1- (or end (point-max)))))))
+                  ;; Use end directly (not end-1) since end is exclusive
+                  (goto-char (max start (min (+ start delta) end)))))
             ;; Widget not found, go to start
             (goto-char (point-min))))
       ;; No widget - restore by line/column
