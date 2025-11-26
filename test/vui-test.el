@@ -93,6 +93,56 @@
     (let ((node (vui-field "" :key "field-1")))
       (expect (vui-vnode-key node) :to-equal "field-1"))))
 
+(describe "vui-checkbox"
+  (it "creates a checkbox vnode"
+    (let ((node (vui-checkbox :checked t)))
+      (expect (vui-vnode-checkbox-p node) :to-be-truthy)
+      (expect (vui-vnode-checkbox-checked-p node) :to-be-truthy)))
+
+  (it "accepts label property"
+    (let ((node (vui-checkbox :label "Enable feature")))
+      (expect (vui-vnode-checkbox-label node) :to-equal "Enable feature")))
+
+  (it "renders checkbox widget"
+    (with-temp-buffer
+      (vui-render (vui-checkbox :checked nil))
+      (expect (buffer-string) :to-match "\\[ \\]")))
+
+  (it "renders checked checkbox"
+    (with-temp-buffer
+      (vui-render (vui-checkbox :checked t))
+      (expect (buffer-string) :to-match "\\[X\\]")))
+
+  (it "renders label after checkbox"
+    (with-temp-buffer
+      (vui-render (vui-checkbox :checked nil :label "My Label"))
+      (expect (buffer-string) :to-match "My Label"))))
+
+(describe "vui-select"
+  (it "creates a select vnode"
+    (let ((node (vui-select "a" '("a" "b" "c"))))
+      (expect (vui-vnode-select-p node) :to-be-truthy)
+      (expect (vui-vnode-select-value node) :to-equal "a")
+      (expect (vui-vnode-select-options node) :to-equal '("a" "b" "c"))))
+
+  (it "accepts prompt property"
+    (let ((node (vui-select nil '("x") :prompt "Choose: ")))
+      (expect (vui-vnode-select-prompt node) :to-equal "Choose: ")))
+
+  (it "defaults prompt to Select:"
+    (let ((node (vui-select nil '("x"))))
+      (expect (vui-vnode-select-prompt node) :to-equal "Select: ")))
+
+  (it "renders as button with current value"
+    (with-temp-buffer
+      (vui-render (vui-select "apple" '("apple" "banana")))
+      (expect (buffer-string) :to-match "apple")))
+
+  (it "renders placeholder when no value"
+    (with-temp-buffer
+      (vui-render (vui-select nil '("a" "b")))
+      (expect (buffer-string) :to-match "Select..."))))
+
 (describe "vui-hstack"
   (it "creates an hstack vnode"
     (let ((node (vui-hstack (vui-text "a") (vui-text "b"))))

@@ -92,6 +92,23 @@
   on-change
   face)
 
+;; Primitive: checkbox
+(cl-defstruct (vui-vnode-checkbox (:include vui-vnode)
+                                  (:constructor vui-vnode-checkbox--create))
+  "Boolean checkbox."
+  checked-p
+  on-change
+  label)
+
+;; Primitive: select (dropdown)
+(cl-defstruct (vui-vnode-select (:include vui-vnode)
+                                (:constructor vui-vnode-select--create))
+  "Selection from options."
+  value        ; Current selection
+  options      ; List of choices
+  on-change
+  prompt)      ; Minibuffer prompt
+
 ;; Layout: horizontal stack
 (cl-defstruct (vui-vnode-hstack (:include vui-vnode)
                                 (:constructor vui-vnode-hstack--create))
@@ -292,6 +309,39 @@ PROPS is a plist accepting :size, :placeholder, :on-change, :face, :key."
    :face (plist-get props :face)
    :key (plist-get props :key)))
 
+(defun vui-checkbox (&rest props)
+  "Create a checkbox vnode.
+PROPS is a plist accepting:
+  :checked BOOL - whether checkbox is checked
+  :on-change FN - called with new boolean value when toggled
+  :label STRING - optional label after checkbox
+  :key KEY - for reconciliation
+
+Usage: (vui-checkbox :checked t :on-change (lambda (v) ...))"
+  (vui-vnode-checkbox--create
+   :checked-p (plist-get props :checked)
+   :on-change (plist-get props :on-change)
+   :label (plist-get props :label)
+   :key (plist-get props :key)))
+
+(defun vui-select (value options &rest props)
+  "Create a select vnode for choosing from OPTIONS.
+VALUE is the current selection (or nil).
+OPTIONS is a list of strings to choose from.
+PROPS is a plist accepting:
+  :on-change FN - called with selected value
+  :prompt STRING - minibuffer prompt (default \"Select: \")
+  :key KEY - for reconciliation
+
+Usage: (vui-select \"apple\" \\='(\"apple\" \"banana\" \"cherry\")
+                   :on-change (lambda (v) ...))"
+  (vui-vnode-select--create
+   :value value
+   :options options
+   :on-change (plist-get props :on-change)
+   :prompt (or (plist-get props :prompt) "Select: ")
+   :key (plist-get props :key)))
+
 (defun vui-hstack (&rest args)
   "Create a horizontal stack layout.
 ARGS can start with keyword options, followed by children.
@@ -400,17 +450,95 @@ Must be called from within a component's event handler."
   (let ((buffer (vui-instance-buffer instance)))
     (when (and buffer (buffer-live-p buffer))
       (with-current-buffer buffer
-        (let ((inhibit-read-only t)
-              (inhibit-redisplay t)  ; Prevent flicker
-              (old-point (point))
-              (vui--root-instance instance))
-          (remove-overlays)
+        (let* ((inhibit-read-only t)
+               (inhibit-redisplay t)  ; Prevent flicker
+               ;; Save widget-relative position
+               (cursor-info (vui--save-cursor-position))
+               (vui--root-instance instance))
+          ;; Remove only widget overlays, preserve others (like hl-line)
+          (vui--remove-widget-overlays)
           (erase-buffer)
           (vui--render-instance instance)
           (widget-setup)
           (use-local-map widget-keymap)
-          ;; Preserve cursor position
-          (goto-char (min old-point (point-max))))))))
+          ;; Restore cursor position
+          (vui--restore-cursor-position cursor-info))))))
+
+(defun vui--widget-bounds (widget)
+  "Get (START . END) bounds for WIDGET."
+  (let ((from (widget-get widget :from))
+        (to (widget-get widget :to)))
+    (when (and from to)
+      (cons (if (markerp from) (marker-position from) from)
+            (if (markerp to) (marker-position to) to)))))
+
+(defun vui--save-cursor-position ()
+  "Save cursor position relative to current widget.
+Returns (WIDGET-INDEX . DELTA) or (nil . (LINE . COL))."
+  (let ((widget (widget-at (point)))
+        (pos (point)))
+    (if widget
+        (let* ((bounds (vui--widget-bounds widget))
+               (widget-start (car bounds))
+               (delta (if widget-start (- pos widget-start) 0))
+               (index (vui--widget-index widget)))
+          (cons index delta))
+      ;; No widget at point - save line/column as fallback
+      (cons nil (cons (line-number-at-pos) (current-column))))))
+
+(defun vui--widget-index (widget)
+  "Get index of WIDGET among all widgets in buffer."
+  (let ((widgets (vui--collect-widgets))
+        (idx 0))
+    (catch 'found
+      (dolist (w widgets)
+        (when (eq w widget)
+          (throw 'found idx))
+        (setq idx (1+ idx)))
+      nil)))
+
+(defun vui--collect-widgets ()
+  "Collect all widgets in buffer in order of appearance."
+  (let ((widgets nil))
+    (save-excursion
+      (goto-char (point-min))
+      (while (not (eobp))
+        (let ((w (widget-at (point))))
+          (when (and w (not (memq w widgets)))
+            (push w widgets)))
+        (forward-char 1)))
+    (nreverse widgets)))
+
+(defun vui--restore-cursor-position (cursor-info)
+  "Restore cursor from CURSOR-INFO saved by `vui--save-cursor-position'."
+  (let ((index (car cursor-info))
+        (delta (cdr cursor-info)))
+    (if index
+        ;; Had a widget - find it by index and apply delta
+        (let* ((widgets (vui--collect-widgets))
+               (widget (nth index widgets)))
+          (if widget
+              (let* ((bounds (vui--widget-bounds widget))
+                     (start (car bounds))
+                     (end (cdr bounds)))
+                (when start
+                  ;; Apply delta, but cap to widget bounds
+                  (goto-char (min (+ start delta)
+                                  (1- (or end (point-max)))))))
+            ;; Widget not found, go to start
+            (goto-char (point-min))))
+      ;; No widget - restore by line/column
+      (goto-char (point-min))
+      (forward-line (1- (car delta)))
+      (move-to-column (cdr delta)))))
+
+(defun vui--remove-widget-overlays ()
+  "Remove widget-related overlays, preserving others like hl-line."
+  (dolist (ov (overlays-in (point-min) (point-max)))
+    (when (or (overlay-get ov 'button)
+              (overlay-get ov 'widget)
+              (overlay-get ov 'field))
+      (delete-overlay ov))))
 
 (defun vui--render-instance (instance)
   "Render a component INSTANCE into the current buffer."
@@ -576,6 +704,40 @@ Must be called from within a component's event handler."
                (append
                 (when face (list :button-face face))
                 (list label))))))
+
+   ;; Checkbox
+   ((vui-vnode-checkbox-p vnode)
+    (let ((checked (vui-vnode-checkbox-checked-p vnode))
+          (on-change (vui-vnode-checkbox-on-change vnode))
+          (label (vui-vnode-checkbox-label vnode))
+          (captured-instance vui--current-instance)
+          (captured-root vui--root-instance))
+      (widget-create 'checkbox
+                     :value checked
+                     :notify (lambda (widget &rest _)
+                               (when on-change
+                                 (let ((vui--current-instance captured-instance)
+                                       (vui--root-instance captured-root))
+                                   (funcall on-change (widget-value widget))))))
+      (when label
+        (insert " " label))))
+
+   ;; Select (dropdown via completing-read)
+   ((vui-vnode-select-p vnode)
+    (let ((value (vui-vnode-select-value vnode))
+          (options (vui-vnode-select-options vnode))
+          (on-change (vui-vnode-select-on-change vnode))
+          (prompt (vui-vnode-select-prompt vnode))
+          (captured-instance vui--current-instance)
+          (captured-root vui--root-instance))
+      (widget-create 'push-button
+                     :notify (lambda (&rest _)
+                               (let* ((vui--current-instance captured-instance)
+                                      (vui--root-instance captured-root)
+                                      (choice (completing-read prompt options nil t nil nil value)))
+                                 (when on-change
+                                   (funcall on-change choice))))
+                     (format "[%s]" (or value "Select...")))))
 
    ;; Horizontal stack
    ((vui-vnode-hstack-p vnode)
@@ -873,6 +1035,57 @@ Demonstrates on-mount and on-unmount callbacks."
 Demonstrates vui-hstack, vui-vstack, and vui-box."
   (interactive)
   (vui-mount (vui-component 'vui-layout-demo) "*vui-layout-demo*"))
+
+;; Widgets demo
+(defcomponent vui-widgets-demo ()
+  :state ((notifications t)
+          (dark-mode nil)
+          (language "English"))
+  :render
+  (vui-vstack
+   :spacing 1
+   (vui-text "Widgets Demo" :face 'bold)
+   (vui-text "Interactive form controls" :face 'font-lock-doc-face)
+
+   ;; Checkboxes
+   (vui-vstack
+    (vui-text "Checkboxes:" :face 'font-lock-function-name-face)
+    (vui-vstack
+     :indent 2
+     (vui-checkbox :checked notifications
+                   :label "Enable notifications"
+                   :on-change (lambda (v) (vui-set-state :notifications v)))
+     (vui-checkbox :checked dark-mode
+                   :label "Dark mode"
+                   :on-change (lambda (v) (vui-set-state :dark-mode v)))))
+
+   ;; Select
+   (vui-vstack
+    (vui-text "Select:" :face 'font-lock-function-name-face)
+    (vui-vstack
+     :indent 2
+     (vui-hstack
+      (vui-text "Language:")
+      (vui-select language '("English" "Spanish" "French" "German" "Japanese")
+                  :prompt "Choose language: "
+                  :on-change (lambda (v) (vui-set-state :language v))))))
+
+   ;; Current state display
+   (vui-vstack
+    (vui-text "Current state:" :face 'font-lock-function-name-face)
+    (vui-vstack
+     :indent 2
+     (vui-text (format "notifications: %s" notifications))
+     (vui-text (format "dark-mode: %s" dark-mode))
+     (vui-text (format "language: %s" language))))
+
+   (vui-text "TAB: navigate | RET/SPC: toggle/activate" :face 'font-lock-comment-face)))
+
+(defun vui-widgets-demo ()
+  "Show a demo of form widgets.
+Demonstrates vui-checkbox and vui-select."
+  (interactive)
+  (vui-mount (vui-component 'vui-widgets-demo) "*vui-widgets-demo*"))
 
 (provide 'vui)
 ;;; vui.el ends here
