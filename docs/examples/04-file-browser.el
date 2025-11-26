@@ -28,19 +28,19 @@
      (vui-text "📁 ")
      (let* ((parts (split-string path "/" t))
             (accumulated "/"))
-       (vui-fragment
-        (vui-button "/"
-                    :on-click (lambda ()
-                                (set-file-browser-path "/")))
-        (mapcar (lambda (part)
-                  (setq accumulated (concat accumulated part "/"))
-                  (let ((target accumulated))
-                    (vui-fragment
-                     (vui-text " / ")
-                     (vui-button part
-                                 :on-click (lambda ()
-                                             (set-file-browser-path target))))))
-                parts))))))
+       (apply #'vui-fragment
+              (vui-button "/"
+                          :on-click (lambda ()
+                                      (set-file-browser-path "/")))
+              (mapcar (lambda (part)
+                        (setq accumulated (concat accumulated part "/"))
+                        (let ((target accumulated))
+                          (vui-fragment
+                           (vui-text " / ")
+                           (vui-button part
+                                       :on-click (lambda ()
+                                                   (set-file-browser-path target))))))
+                      parts))))))
 
 
 ;;; File Entry Component
