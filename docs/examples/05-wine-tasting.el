@@ -93,12 +93,11 @@
          (rms (vui-example--rms all-scores))
          (avg (vui-example--avg all-scores)))
     (vui-table
-     :data `(("RMS" ,(vui-example--format-score rms 4))
+     :columns '((:header "Summary" :width 10)
+                (:header "" :width 8 :align :right))
+     :rows `(("RMS" ,(vui-example--format-score rms 4))
              ("AVG" ,(vui-example--format-score avg 4)))
-     :headers '("Summary" "")
-     :borders 'ascii
-     :column-widths '(17 8)
-     :column-alignments '(:left :right))))
+     :border :ascii)))
 
 
 ;;; Wines Table Component
@@ -137,11 +136,15 @@
                           (vui-example--format-score (plist-get stat :sdev)))))
                 sorted)))
     (vui-table
-     :data rows
-     :headers '("#" "##" "Producer" "Wine" "Year" "AVG" "Sdev")
-     :borders 'ascii
-     :column-widths '(2 3 18 20 6 6 6)
-     :column-alignments '(:right :right :left :left :right :right :right))))
+     :columns '((:header "#" :width 2 :align :right)
+                (:header "##" :width 3 :align :right)
+                (:header "Producer" :width 18)
+                (:header "Wine" :width 20)
+                (:header "Year" :width 6 :align :right)
+                (:header "AVG" :width 6 :align :right)
+                (:header "Sdev" :width 6 :align :right))
+     :rows rows
+     :border :ascii)))
 
 
 ;;; Personal Scores Table Component
@@ -151,16 +154,18 @@
   (let* ((sorted-wines (sort (copy-sequence wines)
                              (lambda (a b)
                                (< (plist-get a :order) (plist-get b :order)))))
-         (header-row (cons "Participant"
-                           (mapcar (lambda (w)
-                                     (format "#%d" (plist-get w :order)))
-                                   sorted-wines)))
-         (data-rows
+         (columns (cons '(:header "Participant" :width 17)
+                        (mapcar (lambda (w)
+                                  (list :header (format "#%d" (plist-get w :order))
+                                        :width 5
+                                        :align :right))
+                                sorted-wines)))
+         (rows
           (mapcar
            (lambda (participant)
              (let ((pscores (cdr (assoc participant scores))))
-               (cons (if (> (length participant) 14)
-                         (concat (substring participant 0 14) "...")
+               (cons (if (> (length participant) 15)
+                         (concat (substring participant 0 15) "..")
                        participant)
                      (mapcar
                       (lambda (wine)
@@ -174,11 +179,9 @@
                       sorted-wines))))
            participants)))
     (vui-table
-     :data data-rows
-     :headers header-row
-     :borders 'ascii
-     :column-widths (cons 17 (make-list (length sorted-wines) 5))
-     :column-alignments (cons :left (make-list (length sorted-wines) :right)))))
+     :columns columns
+     :rows rows
+     :border :ascii)))
 
 
 ;;; Main Wine Tasting App Component
