@@ -2,7 +2,7 @@
 
 ;; This file demonstrates a wine tasting scoring application with:
 ;; - Dynamic tables with computed values
-;; - Editable score inputs inside table cells
+;; - Interactive buttons inside table cells
 ;; - Real-time statistics calculation
 
 ;;; Code:
@@ -63,25 +63,13 @@ Always returns a fixed-width string for consistent table alignment."
 ;;; Score Input Component
 
 (defcomponent score-input (value on-change)
-  :state ((editing nil)
-          (temp-value ""))
-
   :render
-  (if editing
-      (vui-field :value temp-value
-                 :size 4
-                 :on-change (lambda (v) (vui-set-state :temp-value v))
-                 :on-submit (lambda ()
-                              (let ((num (string-to-number temp-value)))
-                                (when (and (> num 0) (<= num 5))
-                                  (funcall on-change num)))
-                              (vui-set-state :editing nil)))
-    (vui-button (vui-example--format-score value 1)
-                :on-click (lambda ()
-                            (vui-batch
-                             (vui-set-state :editing t)
-                             (vui-set-state :temp-value
-                                            (if value (format "%.1f" value) "")))))))
+  (vui-button (vui-example--format-score value 1)
+              :on-click (lambda ()
+                          (let ((num (read-number "Score (0 to remove, 1-5): " (or value 0))))
+                            (cond
+                             ((= num 0) (funcall on-change nil))
+                             ((<= 1 num 5) (funcall on-change num)))))))
 
 
 ;;; Summary Table Component
@@ -151,12 +139,32 @@ Always returns a fixed-width string for consistent table alignment."
 
 ;;; Personal Scores Table Component
 
-(defcomponent personal-scores-table (wines participants scores on-score-change)
+(defconst vui-example--name-min-width 18
+  "Minimum width for participant name column.")
+
+(defconst vui-example--name-max-width 48
+  "Maximum width for participant name column.")
+
+(defun vui-example--truncate-name (name max-len)
+  "Truncate NAME to MAX-LEN chars, adding .. if needed."
+  (if (> (length name) max-len)
+      (concat (substring name 0 (- max-len 2)) "..")
+    name))
+
+(defcomponent personal-scores-table (wines participants scores
+                                           on-score-change on-participant-change)
   :render
   (let* ((sorted-wines (sort (copy-sequence wines)
                              (lambda (a b)
                                (< (plist-get a :order) (plist-get b :order)))))
-         (columns (cons '(:header "Participant" :width 17)
+         ;; Calculate dynamic width: expand to fit longest name (+ 2 for brackets),
+         ;; clamped between min and max
+         (max-name-len (apply #'max (mapcar #'length participants)))
+         (name-col-width (max vui-example--name-min-width
+                              (min vui-example--name-max-width (+ max-name-len 2))))
+         ;; Only truncate when name exceeds what max column can hold
+         (max-display-len (- vui-example--name-max-width 2))
+         (columns (cons (list :header "Participant" :width name-col-width)
                         (mapcar (lambda (w)
                                   (list :header (format "#%d" (plist-get w :order))
                                         :width 5
@@ -165,10 +173,16 @@ Always returns a fixed-width string for consistent table alignment."
          (rows
           (mapcar
            (lambda (participant)
-             (let ((pscores (cdr (assoc participant scores))))
-               (cons (if (> (length participant) 15)
-                         (concat (substring participant 0 15) "..")
-                       participant)
+             (let ((pscores (cdr (assoc participant scores)))
+                   (display-name (vui-example--truncate-name participant max-display-len)))
+               (cons (vui-button display-name
+                                 :on-click (lambda ()
+                                             (let ((new-name (read-string "Participant name: "
+                                                                          participant)))
+                                               (when (and (not (string-empty-p new-name))
+                                                          (not (equal new-name participant)))
+                                                 (funcall on-participant-change
+                                                          participant new-name)))))
                      (mapcar
                       (lambda (wine)
                         (let ((wine-id (plist-get wine :id)))
@@ -220,7 +234,22 @@ Always returns a fixed-width string for consistent table alignment."
                                               s))
                                           scores)
                                 (cons (cons participant new-pscores) scores))))
-             (vui-set-state :scores new-scores)))))
+             (vui-set-state :scores new-scores))))
+        (on-participant-change
+         (lambda (old-name new-name)
+           ;; Update participants list
+           (let ((new-participants (mapcar (lambda (p)
+                                             (if (equal p old-name) new-name p))
+                                           participants))
+                 ;; Update scores alist key
+                 (new-scores (mapcar (lambda (s)
+                                       (if (equal (car s) old-name)
+                                           (cons new-name (cdr s))
+                                         s))
+                                     scores)))
+             (vui-batch
+              (vui-set-state :participants new-participants)
+              (vui-set-state :scores new-scores))))))
 
     (vui-vstack
      ;; Title
@@ -239,12 +268,13 @@ Always returns a fixed-width string for consistent table alignment."
      (vui-newline)
      ;; Personal scores (editable)
      (vui-text "Personal Scores" :face 'bold)
-     (vui-text "(Click score to edit, RET to confirm)")
+     (vui-text "(Click name or score to edit)")
      (vui-component 'personal-scores-table
                     :wines wines
                     :participants participants
                     :scores scores
-                    :on-score-change on-score-change))))
+                    :on-score-change on-score-change
+                    :on-participant-change on-participant-change))))
 
 
 ;;; Demo Function

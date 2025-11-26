@@ -319,7 +319,7 @@ Table cells can contain any vnode, including buttons, fields, and components:
  :border :ascii)
 #+end_src
 
-For editable tables with complex state, embed components in cells:
+For interactive tables with complex state, embed components in cells:
 
 #+begin_src elisp
 (vui-table
@@ -335,7 +335,23 @@ For editable tables with complex state, embed components in cells:
  :border :ascii)
 #+end_src
 
-See =docs/examples/05-wine-tasting.el= for a complete editable table example.
+** Dynamic Column Widths
+
+Calculate column widths dynamically based on content:
+
+#+begin_src elisp
+(let* ((max-name-len (apply #'max (mapcar #'length names)))
+       (col-width (max 18 (min 48 (+ max-name-len 2)))))  ; min 18, max 48
+  (vui-table
+   :columns `((:header "Name" :width ,col-width)
+              (:header "Value" :width 10))
+   :rows ...))
+#+end_src
+
+See =docs/examples/05-wine-tasting.el= for a complete example with:
+- Interactive buttons in table cells
+- Dynamic column width calculation
+- Real-time statistics updates
 
 * Dynamic Lists — =vui-list=
 

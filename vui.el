@@ -1725,20 +1725,17 @@ INSTANCE is the component instance."
   (when parent
     (let ((children (vui-instance-children parent)))
       (if key
-          ;; Key-based lookup
+          ;; Key-based lookup - find child with same type AND key
           (cl-find-if (lambda (child)
                         (and (eq (vui-component-def-name (vui-instance-def child)) type)
                              (equal (vui-vnode-key (vui-instance-vnode child)) key)))
                       children)
-        ;; Index-based lookup (same type at same position)
-        (let ((same-type-index 0))
-          (cl-find-if (lambda (child)
-                        (when (eq (vui-component-def-name (vui-instance-def child)) type)
-                          (if (= same-type-index index)
-                              t
-                            (cl-incf same-type-index)
-                            nil)))
-                      children))))))
+        ;; Index-based lookup - find child at same global position with same type
+        ;; This matches React's behavior for children without keys
+        (let ((child-at-index (nth index children)))
+          (when (and child-at-index
+                     (eq (vui-component-def-name (vui-instance-def child-at-index)) type))
+            child-at-index))))))
 
 (defun vui--create-instance (vnode &optional parent)
   "Create a new component instance from VNODE with optional PARENT."
