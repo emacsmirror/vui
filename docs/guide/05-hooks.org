@@ -1,0 +1,419 @@
+#+TITLE: Hooks
+#+AUTHOR: vui.el Documentation
+#+OPTIONS: toc:2 num:t
+
+Hooks let you add side effects, mutable references, and memoization to your
+components. They're inspired by React Hooks but adapted for Emacs Lisp.
+
+* Side Effects — =use-effect=
+
+=use-effect= runs code after rendering, optionally with cleanup.
+
+** Basic Effect
+
+#+begin_src elisp
+(defcomponent logger ()
+  :state ((count 0))
+  :render
+  (progn
+    (use-effect (count)  ; Dependency list
+      (message "Count changed to: %d" count))
+    (vui-button (format "Count: %d" count)
+                :on-click (lambda ()
+                            (vui-set-state :count (1+ count))))))
+#+end_src
+
+The effect runs:
+1. After the first render
+2. After any render where =count= has changed
+
+** Dependency List
+
+The first argument to =use-effect= is the dependency list:
+
+#+begin_src elisp
+;; Run only once (on mount)
+(use-effect ()
+  (message "Component mounted"))
+
+;; Run when 'value' changes
+(use-effect (value)
+  (message "Value is now: %s" value))
+
+;; Run when any of these change
+(use-effect (a b c)
+  (message "a=%s b=%s c=%s" a b c))
+#+end_src
+
+** Cleanup Function
+
+Return a function from the effect body to run cleanup:
+
+#+begin_src elisp
+(defcomponent timer-example ()
+  :state ((elapsed 0))
+  :render
+  (progn
+    (use-effect ()
+      ;; Setup: start timer
+      (let ((timer (run-with-timer 1 1
+                                   (lambda ()
+                                     (vui-set-state :elapsed (1+ elapsed))))))
+        ;; Cleanup: cancel timer
+        (lambda ()
+          (cancel-timer timer))))
+    (vui-text (format "Elapsed: %d seconds" elapsed))))
+#+end_src
+
+Cleanup runs:
+1. Before the effect runs again (when deps change)
+2. When the component unmounts
+
+** Common Use Cases
+
+*** Fetching Data
+
+#+begin_src elisp
+(defcomponent user-profile (user-id)
+  :state ((user nil)
+          (loading t))
+  :render
+  (progn
+    (use-effect (user-id)
+      ;; Fetch when user-id changes
+      (vui-set-state :loading t)
+      (fetch-user user-id
+                  (lambda (data)
+                    (vui-set-state :user data)
+                    (vui-set-state :loading nil))))
+
+    (if loading
+        (vui-text "Loading...")
+      (vui-text (format "User: %s" (plist-get user :name))))))
+#+end_src
+
+*** Subscribing to Events
+
+#+begin_src elisp
+(defcomponent resize-aware ()
+  :state ((width (frame-width)))
+  :render
+  (progn
+    (use-effect ()
+      (let ((handler (lambda ()
+                       (vui-set-state :width (frame-width)))))
+        (add-hook 'window-size-change-functions handler)
+        ;; Cleanup
+        (lambda ()
+          (remove-hook 'window-size-change-functions handler))))
+
+    (vui-text (format "Frame width: %d" width))))
+#+end_src
+
+*** Setting Document Title
+
+#+begin_src elisp
+(defcomponent page (title)
+  :render
+  (progn
+    (use-effect (title)
+      (setq frame-title-format title))
+
+    (vui-text (format "Page: %s" title))))
+#+end_src
+
+* Mutable References — =use-ref=
+
+=use-ref= creates a mutable value that persists across renders without causing
+re-renders when changed.
+
+** Basic Ref
+
+#+begin_src elisp
+(defcomponent ref-example ()
+  :state ((count 0))
+  :render
+  (let ((render-count (use-ref 0)))
+    ;; Increment ref on every render (doesn't trigger re-render)
+    (setf (plist-get render-count :current)
+          (1+ (plist-get render-count :current)))
+
+    (vui-fragment
+     (vui-text (format "Rendered %d times"
+                       (plist-get render-count :current)))
+     (vui-newline)
+     (vui-button "Update state"
+                 :on-click (lambda ()
+                             (vui-set-state :count (1+ count)))))))
+#+end_src
+
+** Ref Structure
+
+=use-ref= returns a plist with a =:current= key:
+
+#+begin_src elisp
+(let ((my-ref (use-ref "initial")))
+  ;; Read
+  (plist-get my-ref :current)     ; => "initial"
+
+  ;; Write
+  (setf (plist-get my-ref :current) "new value"))
+#+end_src
+
+** Common Use Cases
+
+*** Storing Previous Value
+
+#+begin_src elisp
+(defcomponent with-previous (value)
+  :render
+  (let ((prev-ref (use-ref nil)))
+    (use-effect (value)
+      ;; After render, store current as previous
+      (setf (plist-get prev-ref :current) value))
+
+    (vui-fragment
+     (vui-text (format "Current: %s" value))
+     (vui-newline)
+     (vui-text (format "Previous: %s"
+                       (or (plist-get prev-ref :current) "N/A"))))))
+#+end_src
+
+*** Storing Timer References
+
+#+begin_src elisp
+(defcomponent interval-counter ()
+  :state ((count 0))
+  :render
+  (let ((timer-ref (use-ref nil)))
+    (use-effect ()
+      ;; Store timer in ref for later cleanup
+      (setf (plist-get timer-ref :current)
+            (run-with-timer 1 1 (lambda ()
+                                  (vui-set-state :count (1+ count)))))
+      (lambda ()
+        (when (plist-get timer-ref :current)
+          (cancel-timer (plist-get timer-ref :current)))))
+
+    (vui-text (format "Count: %d" count))))
+#+end_src
+
+* Memoized Callbacks — =use-callback=
+
+=use-callback= returns a stable function reference that only changes when
+dependencies change.
+
+** Basic Usage
+
+#+begin_src elisp
+(defcomponent memoized-callback ()
+  :state ((count 0))
+  :render
+  (let ((increment (use-callback (count)
+                     (lambda ()
+                       (vui-set-state :count (1+ count))))))
+    (vui-button "Increment"
+                :on-click increment)))
+#+end_src
+
+** Why Use It?
+
+Without =use-callback=, a new function is created on every render. This can
+cause unnecessary re-renders of child components that receive the callback
+as a prop.
+
+#+begin_src elisp
+;; Without use-callback: new function every render
+(defcomponent parent ()
+  :state ((count 0))
+  :render
+  (vui-component 'child
+                 ;; This creates a NEW function each render
+                 :on-click (lambda () (vui-set-state :count (1+ count)))))
+
+;; With use-callback: stable reference
+(defcomponent parent ()
+  :state ((count 0))
+  :render
+  (let ((handle-click (use-callback (count)
+                        (lambda ()
+                          (vui-set-state :count (1+ count))))))
+    (vui-component 'child
+                   :on-click handle-click)))  ; Same reference if count unchanged
+#+end_src
+
+* Memoized Values — =use-memo=
+
+=use-memo= caches expensive computations, only recomputing when dependencies
+change.
+
+** Basic Usage
+
+#+begin_src elisp
+(defcomponent filtered-list ()
+  :state ((items '(1 2 3 4 5 6 7 8 9 10))
+          (filter-threshold 5))
+  :render
+  (let ((filtered (use-memo (items filter-threshold)
+                    ;; This only runs when items or filter-threshold changes
+                    (seq-filter (lambda (x) (> x filter-threshold)) items))))
+    (vui-list filtered
+              (lambda (item)
+                (vui-text (format "%d\n" item))))))
+#+end_src
+
+** When to Use
+
+Use =use-memo= when:
+- Computing a value is expensive (sorting, filtering, transforming)
+- The computation depends on specific inputs
+- You want to avoid redundant work on re-renders
+
+#+begin_src elisp
+(defcomponent expensive-computation ()
+  :state ((data large-dataset)
+          (sort-key :name))
+  :render
+  (let ((sorted (use-memo (data sort-key)
+                  ;; Only sorts when data or sort-key changes
+                  (seq-sort-by (lambda (item)
+                                 (plist-get item sort-key))
+                               #'string<
+                               data))))
+    (vui-table :rows sorted)))
+#+end_src
+
+* Advanced: Custom Comparison
+
+Both =use-callback*= and =use-memo*= support custom comparison modes.
+
+** Comparison Modes
+
+| Mode       | Description                         |
+|------------+-------------------------------------|
+| =eq=       | Identity comparison (fastest)       |
+| =equal=    | Structural comparison (default)     |
+| =(lambda)= | Custom comparison function          |
+
+** Using =eq= Comparison
+
+#+begin_src elisp
+;; Only recompute if symbol identity changes
+(use-memo* (sort-key)
+  :compare 'eq
+  (expensive-sort data sort-key))
+#+end_src
+
+** Custom Comparison Function
+
+#+begin_src elisp
+;; Only recompute if first element differs
+(use-memo* (items)
+  :compare (lambda (old-deps new-deps)
+             (equal (car (car old-deps))
+                    (car (car new-deps))))
+  (process-items items))
+#+end_src
+
+* Hook Rules
+
+Follow these rules to avoid bugs:
+
+** 1. Call Hooks at Top Level
+
+#+begin_src elisp
+;; GOOD: hooks at top level of render
+(defcomponent good-example ()
+  :render
+  (let ((count (use-ref 0))
+        (callback (use-callback () (lambda () ...))))
+    ...))
+
+;; BAD: hook inside conditional
+(defcomponent bad-example ()
+  :render
+  (when some-condition
+    (let ((ref (use-ref 0)))  ; DON'T do this!
+      ...)))
+#+end_src
+
+** 2. Call Hooks in Same Order
+
+Hooks must be called in the same order on every render:
+
+#+begin_src elisp
+;; GOOD: same order every time
+(defcomponent good-order ()
+  :render
+  (let ((ref1 (use-ref nil))
+        (ref2 (use-ref nil)))
+    ...))
+
+;; BAD: order depends on condition
+(defcomponent bad-order ()
+  :render
+  (let ((ref1 (if condition
+                  (use-ref nil)    ; Sometimes first
+                (use-ref "other"))))  ; Sometimes only hook
+    ...))
+#+end_src
+
+** 3. Dependencies Must Be Complete
+
+Include all values used in the effect/callback:
+
+#+begin_src elisp
+;; BAD: missing dependency
+(defcomponent missing-dep ()
+  :state ((a 1) (b 2))
+  :render
+  (progn
+    (use-effect (a)  ; Missing 'b'!
+      (message "a=%d b=%d" a b))  ; Uses both a and b
+    ...))
+
+;; GOOD: all dependencies listed
+(defcomponent complete-deps ()
+  :state ((a 1) (b 2))
+  :render
+  (progn
+    (use-effect (a b)  ; Both included
+      (message "a=%d b=%d" a b))
+    ...))
+#+end_src
+
+* Summary
+
+| Hook            | Purpose                              |
+|-----------------+--------------------------------------|
+| =use-effect=    | Run side effects after render        |
+| =use-ref=       | Mutable value without re-render      |
+| =use-callback=  | Stable function reference            |
+| =use-memo=      | Cache expensive computations         |
+| =use-callback*= | use-callback with custom comparison  |
+| =use-memo*=     | use-memo with custom comparison      |
+
+* Try It Yourself
+
+#+begin_quote
+*Exercise*: Create a =search-input= component that:
+1. Has a text field for search query
+2. Debounces the search (waits 500ms after typing stops)
+3. Shows "Searching..." while debouncing
+4. Uses =use-ref= to store the timer
+5. Uses =use-effect= to handle the debounce logic
+#+end_quote
+
+#+begin_src elisp
+(defcomponent search-input (on-search)
+  :state ((query "")
+          (is-searching nil))
+  :render
+  ;; Hint: use-ref for timer, use-effect with query dependency
+  )
+#+end_src
+
+* What's Next?
+
+- [[file:06-context.org][Context]] — Share data without prop drilling
+- [[file:07-lifecycle.org][Lifecycle]] — on-mount, on-update, on-unmount

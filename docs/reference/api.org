@@ -1,0 +1,766 @@
+#+TITLE: API Reference
+#+AUTHOR: vui.el Documentation
+#+OPTIONS: toc:3 num:t H:4
+
+Complete reference for all vui.el functions, macros, and variables.
+
+* Component Definition
+
+** defcomponent
+
+#+begin_src elisp
+(defcomponent NAME (PROPS...) BODY...)
+#+end_src
+
+Define a component named NAME.
+
+*** Arguments
+
+- NAME :: Symbol naming the component
+- PROPS :: List of prop names the component accepts
+
+*** Body Keywords
+
+| Keyword         | Required | Description                                      |
+|-----------------+----------+--------------------------------------------------|
+| =:state=        | No       | =(VAR INITIAL)...= - local state variables       |
+| =:on-mount=     | No       | Form run after first render                      |
+| =:on-update=    | No       | Form run after re-render (not first)             |
+| =:on-unmount=   | No       | Form run before removal                          |
+| =:should-update=| No       | Return t to allow re-render, nil to skip         |
+| =:render=       | Yes      | The render expression (must return a vnode)      |
+
+*** Available Variables in Body
+
+In all forms:
+- Props as named variables (e.g., =title= for =:title= prop)
+- State vars as named variables
+- =children= for nested content
+
+In =:on-update= and =:should-update= additionally:
+- =props= — Current props plist
+- =state= — Current state plist
+- =prev-props= — Previous props plist
+- =prev-state= — Previous state plist
+
+*** Example
+
+#+begin_src elisp
+(defcomponent counter (initial-value)
+  :state ((count initial-value))
+
+  :on-mount
+  (message "Counter mounted with %d" count)
+
+  :on-update
+  (unless (equal (plist-get prev-state :count)
+                 (plist-get state :count))
+    (message "Count changed to %d" count))
+
+  :should-update
+  (not (equal (plist-get prev-state :count)
+              (plist-get state :count)))
+
+  :on-unmount
+  (message "Counter unmounted")
+
+  :render
+  (vui-fragment
+   (vui-text (format "Count: %d" count))
+   (vui-button "+" :on-click (lambda ()
+                               (vui-set-state :count (1+ count))))))
+#+end_src
+
+* Mounting
+
+** vui-mount
+
+#+begin_src elisp
+(vui-mount COMPONENT-VNODE &optional BUFFER-NAME) -> instance
+#+end_src
+
+Mount a component as root and render to a buffer.
+
+- COMPONENT-VNODE :: Created with =vui-component=
+- BUFFER-NAME :: String (default ="*vui*"=)
+- Returns :: The root instance
+
+#+begin_src elisp
+(vui-mount (vui-component 'my-app :title "Hello") "*my-app*")
+#+end_src
+
+* Primitives
+
+** vui-text
+
+#+begin_src elisp
+(vui-text CONTENT &rest PROPS) -> vnode
+#+end_src
+
+Create a text node.
+
+| Property | Type   | Description             |
+|----------+--------+-------------------------|
+| =:face=  | symbol | Emacs face for styling  |
+| =:key=   | any    | Reconciliation key      |
+
+#+begin_src elisp
+(vui-text "Hello" :face 'bold)
+(vui-text (format "Count: %d" count))
+#+end_src
+
+** vui-newline
+
+#+begin_src elisp
+(vui-newline &optional KEY) -> vnode
+#+end_src
+
+Create a newline.
+
+** vui-space
+
+#+begin_src elisp
+(vui-space &optional WIDTH KEY) -> vnode
+#+end_src
+
+Create WIDTH spaces (default 1).
+
+** vui-fragment
+
+#+begin_src elisp
+(vui-fragment &rest CHILDREN) -> vnode
+#+end_src
+
+Group multiple vnodes without adding structure.
+
+#+begin_src elisp
+(vui-fragment
+ (vui-text "Line 1")
+ (vui-newline)
+ (vui-text "Line 2"))
+#+end_src
+
+** vui-button
+
+#+begin_src elisp
+(vui-button LABEL &rest PROPS) -> vnode
+#+end_src
+
+Create a clickable button.
+
+| Property    | Type     | Description              |
+|-------------+----------+--------------------------|
+| =:on-click= | function | Click handler            |
+| =:face=     | symbol   | Button face              |
+| =:disabled= | boolean  | Disable button           |
+| =:key=      | any      | Reconciliation key       |
+
+#+begin_src elisp
+(vui-button "Click me"
+            :on-click (lambda () (message "Clicked!"))
+            :face 'custom-button)
+#+end_src
+
+** vui-field
+
+#+begin_src elisp
+(vui-field &key VALUE SIZE ON-CHANGE ON-SUBMIT KEY FACE) -> vnode
+#+end_src
+
+Create a text input field.
+
+| Property     | Type     | Description                          |
+|--------------+----------+--------------------------------------|
+| =:value=     | string   | Initial content (default "")         |
+| =:size=      | integer  | Width in characters                  |
+| =:on-change= | function | Called with value on change          |
+| =:on-submit= | function | Called with value on RET             |
+| =:key=       | any      | Reconciliation key / lookup key      |
+| =:face=      | symbol   | Text face                            |
+
+#+begin_src elisp
+(vui-field :value name
+           :size 20
+           :on-change (lambda (v) (vui-set-state :name v)))
+#+end_src
+
+** vui-field-value
+
+#+begin_src elisp
+(vui-field-value KEY) -> string or nil
+#+end_src
+
+Get current value of field with KEY, without triggering re-render.
+
+#+begin_src elisp
+(vui-field :key 'my-input :size 20)
+(vui-button "Submit"
+            :on-click (lambda ()
+                        (process (vui-field-value 'my-input))))
+#+end_src
+
+** vui-checkbox
+
+#+begin_src elisp
+(vui-checkbox &rest PROPS) -> vnode
+#+end_src
+
+Create a checkbox.
+
+| Property     | Type     | Description                    |
+|--------------+----------+--------------------------------|
+| =:checked=   | boolean  | Whether checked                |
+| =:on-change= | function | Called with boolean on toggle  |
+| =:label=     | string   | Label after checkbox           |
+| =:key=       | any      | Reconciliation key             |
+
+#+begin_src elisp
+(vui-checkbox :checked enabled
+              :label "Enable feature"
+              :on-change (lambda (v) (vui-set-state :enabled v)))
+#+end_src
+
+** vui-select
+
+#+begin_src elisp
+(vui-select VALUE OPTIONS &rest PROPS) -> vnode
+#+end_src
+
+Create a selection button (minibuffer-based selection).
+
+| Property     | Type      | Description                      |
+|--------------+-----------+----------------------------------|
+| VALUE        | string    | Current selection                |
+| OPTIONS      | list      | List of options (strings or alist) |
+| =:on-change= | function  | Called with selected value       |
+| =:prompt=    | string    | Minibuffer prompt (default "Select: ") |
+| =:key=       | any       | Reconciliation key               |
+
+#+begin_src elisp
+;; Simple list
+(vui-select current-theme
+            '("light" "dark" "system")
+            :on-change (lambda (v) (vui-set-state :theme v)))
+
+;; Alist with display values
+(vui-select status
+            '(("active" . "Active")
+              ("pending" . "Pending")
+              ("closed" . "Closed"))
+            :on-change (lambda (v) (vui-set-state :status v)))
+#+end_src
+
+* Layout
+
+** vui-hstack
+
+#+begin_src elisp
+(vui-hstack &rest ARGS) -> vnode
+#+end_src
+
+Horizontal layout. ARGS can start with options, then children.
+
+| Option     | Type    | Default | Description                |
+|------------+---------+---------+----------------------------|
+| =:spacing= | integer | 1       | Spaces between children    |
+| =:key=     | any     | nil     | Reconciliation key         |
+
+#+begin_src elisp
+(vui-hstack :spacing 2
+            (vui-text "Label:")
+            (vui-field :size 10))
+#+end_src
+
+** vui-vstack
+
+#+begin_src elisp
+(vui-vstack &rest ARGS) -> vnode
+#+end_src
+
+Vertical layout. ARGS can start with options, then children.
+
+| Option     | Type    | Default | Description                    |
+|------------+---------+---------+--------------------------------|
+| =:spacing= | integer | 0       | Blank lines between children   |
+| =:indent=  | integer | 0       | Left indent in spaces          |
+| =:key=     | any     | nil     | Reconciliation key             |
+
+#+begin_src elisp
+(vui-vstack :spacing 1 :indent 2
+            (vui-text "Item 1")
+            (vui-text "Item 2"))
+#+end_src
+
+** vui-box
+
+#+begin_src elisp
+(vui-box CHILD &rest PROPS) -> vnode
+#+end_src
+
+Fixed-width container for CHILD.
+
+| Property         | Type    | Default | Description             |
+|------------------+---------+---------+-------------------------|
+| =:width=         | integer | 20      | Width in characters     |
+| =:align=         | keyword | :left   | :left, :center, :right  |
+| =:padding-left=  | integer | 0       | Left padding            |
+| =:padding-right= | integer | 0       | Right padding           |
+| =:key=           | any     | nil     | Reconciliation key      |
+
+#+begin_src elisp
+(vui-box (vui-text "Centered") :width 30 :align :center)
+#+end_src
+
+** vui-table
+
+#+begin_src elisp
+(vui-table &rest ARGS) -> vnode
+#+end_src
+
+Create a table layout.
+
+| Property   | Type   | Description                               |
+|------------+--------+-------------------------------------------|
+| =:columns= | list   | List of column specs (see below)          |
+| =:rows=    | list   | List of rows, each a list of cells        |
+| =:border=  | symbol | nil, :ascii, or :unicode                  |
+| =:key=     | any    | Reconciliation key                        |
+
+*** Column Spec Properties
+
+| Property     | Type    | Description                     |
+|--------------+---------+---------------------------------|
+| =:header=    | string  | Header text                     |
+| =:width=     | integer | Fixed width                     |
+| =:min-width= | integer | Minimum width, expand as needed |
+| =:align=     | keyword | :left (default), :center, :right |
+
+#+begin_src elisp
+(vui-table
+ :columns '((:header "Name" :min-width 15)
+            (:header "Age" :width 5 :align :right))
+ :rows '(("Alice" "30")
+         ("Bob" "25"))
+ :border :ascii)
+#+end_src
+
+** vui-list
+
+#+begin_src elisp
+(vui-list ITEMS RENDER-FN &optional KEY-FN) -> vnode
+#+end_src
+
+Render a list of items with proper reconciliation.
+
+- ITEMS :: List of items to render
+- RENDER-FN :: =(lambda (item) vnode)= — renders each item
+- KEY-FN :: =(lambda (item) key)= — extracts key (default: identity)
+
+#+begin_src elisp
+(vui-list todos
+          (lambda (todo)
+            (vui-text (plist-get todo :text)))
+          (lambda (todo)
+            (plist-get todo :id)))
+#+end_src
+
+* Components
+
+** vui-component
+
+#+begin_src elisp
+(vui-component TYPE &rest PROPS-AND-CHILDREN) -> vnode
+#+end_src
+
+Create a component vnode.
+
+- TYPE :: Symbol naming a defined component
+- PROPS-AND-CHILDREN :: Plist of props, optionally ending with =:children=
+
+#+begin_src elisp
+(vui-component 'greeting :name "Alice")
+(vui-component 'card :title "Hello" :children (list child1 child2))
+#+end_src
+
+* State Management
+
+** vui-set-state
+
+#+begin_src elisp
+(vui-set-state KEY VALUE)
+#+end_src
+
+Set state KEY to VALUE and schedule re-render.
+
+Must be called from within a component context (event handler, lifecycle hook).
+
+#+begin_src elisp
+(vui-button "Increment"
+            :on-click (lambda ()
+                        (vui-set-state :count (1+ count))))
+#+end_src
+
+** vui-batch
+
+#+begin_src elisp
+(vui-batch &rest BODY)
+#+end_src
+
+Batch multiple state updates into a single re-render.
+
+#+begin_src elisp
+(vui-batch
+ (vui-set-state :name "Bob")
+ (vui-set-state :age 30)
+ (vui-set-state :active t))
+;; Single re-render instead of three
+#+end_src
+
+** vui-flush-sync
+
+#+begin_src elisp
+(vui-flush-sync)
+#+end_src
+
+Force immediate re-render, bypassing idle timers.
+
+* Hooks
+
+** use-effect
+
+#+begin_src elisp
+(use-effect (DEPS...) BODY...)
+#+end_src
+
+Run side effect when DEPS change.
+
+- Runs after first render
+- Runs after re-render if any dep changed
+- If BODY returns a function, it's called as cleanup
+
+#+begin_src elisp
+;; Run once on mount
+(use-effect ()
+  (message "Mounted"))
+
+;; Run when count changes
+(use-effect (count)
+  (message "Count: %d" count))
+
+;; With cleanup
+(use-effect (user-id)
+  (let ((timer (run-with-timer 1 nil #'refresh)))
+    (lambda () (cancel-timer timer))))
+#+end_src
+
+** use-ref
+
+#+begin_src elisp
+(use-ref INITIAL-VALUE) -> (VALUE . nil)
+#+end_src
+
+Create mutable ref that persists across renders.
+
+Access via =(car ref)=, set via =(setcar ref new-value)=.
+
+Modifying a ref does NOT trigger re-render.
+
+#+begin_src elisp
+(let ((timer-ref (use-ref nil)))
+  (use-effect ()
+    (setcar timer-ref (run-with-timer 1 1 #'tick))
+    (lambda () (cancel-timer (car timer-ref)))))
+#+end_src
+
+** use-callback
+
+#+begin_src elisp
+(use-callback (DEPS...) BODY)
+#+end_src
+
+Create memoized callback that stays stable when DEPS unchanged.
+
+#+begin_src elisp
+(let ((handle-click (use-callback (item-id)
+                      (lambda () (delete-item item-id)))))
+  (vui-button "Delete" :on-click handle-click))
+#+end_src
+
+** use-callback*
+
+#+begin_src elisp
+(use-callback* (DEPS...) :compare COMPARE BODY)
+#+end_src
+
+Like =use-callback= with configurable comparison.
+
+COMPARE options:
+- =eq= — identity comparison (fast)
+- =equal= — structural comparison (default)
+- function — custom =(lambda (old-deps new-deps) bool)=
+
+** use-memo
+
+#+begin_src elisp
+(use-memo (DEPS...) BODY)
+#+end_src
+
+Cache computed value, recompute only when DEPS change.
+
+#+begin_src elisp
+(let ((filtered (use-memo (items filter)
+                  (seq-filter (lambda (i)
+                                (string-match-p filter (plist-get i :name)))
+                              items))))
+  (vui-list filtered #'render-item))
+#+end_src
+
+** use-memo*
+
+#+begin_src elisp
+(use-memo* (DEPS...) :compare COMPARE BODY)
+#+end_src
+
+Like =use-memo= with configurable comparison.
+
+* Context
+
+** defcontext
+
+#+begin_src elisp
+(defcontext NAME &optional DEFAULT-VALUE DOCSTRING)
+#+end_src
+
+Define a context.
+
+Creates:
+- =NAME-context= — The context object
+- =NAME-provider= — Function to provide value
+- =use-NAME= — Hook to consume value
+
+#+begin_src elisp
+(defcontext theme 'light "Current UI theme.")
+
+;; Provide
+(theme-provider 'dark
+  (vui-component 'my-app))
+
+;; Consume (in component render)
+(let ((theme (use-theme)))
+  (vui-text (format "Theme: %s" theme)))
+#+end_src
+
+* Error Handling
+
+** vui-error-boundary
+
+#+begin_src elisp
+(vui-error-boundary &key FALLBACK ON-ERROR ID CHILDREN) -> vnode
+#+end_src
+
+Catch render errors in CHILDREN and display FALLBACK.
+
+| Property   | Type     | Description                        |
+|------------+----------+------------------------------------|
+| =:fallback= | vnode   | Displayed when error occurs        |
+| =:on-error= | function | Called with error when caught     |
+| =:id=       | any     | Unique identifier (auto-generated) |
+| =:children= | vnode   | Protected content                  |
+
+#+begin_src elisp
+(vui-error-boundary
+ :id 'main-boundary
+ :fallback (vui-text "Something went wrong!" :face 'error)
+ :on-error (lambda (err) (log-error err))
+ :children (vui-component 'risky-component))
+#+end_src
+
+** vui-reset-error-boundary
+
+#+begin_src elisp
+(vui-reset-error-boundary ID)
+#+end_src
+
+Reset error state for boundary ID, allowing retry.
+
+* Configuration Variables
+
+** Error Handling
+
+| Variable                    | Default | Description                         |
+|-----------------------------+---------+-------------------------------------|
+| =vui-lifecycle-error-handler= | warn   | Handler for lifecycle errors        |
+| =vui-event-error-handler=     | warn   | Handler for event errors            |
+| =vui-last-error=              | nil    | Last error: (TYPE ERROR CONTEXT)    |
+
+Handler values:
+- =warn= — Display warning (default)
+- =message= — Display in echo area
+- =signal= — Re-signal error
+- =ignore= — Silently ignore
+- function — Custom =(lambda (err hook-name instance) ...)=
+
+** Performance
+
+| Variable               | Default | Description                        |
+|------------------------+---------+------------------------------------|
+| =vui-idle-render-delay= | 0.01   | Seconds before idle render (nil=immediate) |
+| =vui-timing-enabled=    | nil    | Enable timing collection           |
+
+** Debugging
+
+| Variable               | Default                                       | Description              |
+|------------------------+-----------------------------------------------+--------------------------|
+| =vui-debug-enabled=    | nil                                           | Enable debug logging     |
+| =vui-debug-log-phases= | (render mount update unmount state-change)    | Phases to log            |
+
+* Developer Tools
+
+** vui-inspect
+
+#+begin_src elisp
+(vui-inspect &optional INSTANCE)
+#+end_src
+
+Display component tree in inspector buffer.
+
+Shows hierarchical view with props and state for each component.
+
+** vui-inspect-state
+
+#+begin_src elisp
+(vui-inspect-state &optional INSTANCE)
+#+end_src
+
+Display only components with state.
+
+** vui-get-instance-by-id
+
+#+begin_src elisp
+(vui-get-instance-by-id ID &optional INSTANCE) -> instance or nil
+#+end_src
+
+Find component instance by ID.
+
+** vui-get-component-instances
+
+#+begin_src elisp
+(vui-get-component-instances COMPONENT-TYPE &optional INSTANCE) -> list
+#+end_src
+
+Find all instances of COMPONENT-TYPE.
+
+** vui-report-timing
+
+#+begin_src elisp
+(vui-report-timing &optional LAST-N)
+#+end_src
+
+Display timing report in buffer.
+
+Groups by component, shows time per phase.
+
+** vui-get-timing
+
+#+begin_src elisp
+(vui-get-timing) -> list
+#+end_src
+
+Return raw timing data.
+
+Each entry: =(:phase PHASE :component NAME :duration SECONDS :timestamp TIME)=
+
+** vui-clear-timing
+
+#+begin_src elisp
+(vui-clear-timing)
+#+end_src
+
+Clear all timing data.
+
+** vui-debug-show
+
+#+begin_src elisp
+(vui-debug-show)
+#+end_src
+
+Show the =*vui-debug*= buffer.
+
+** vui-debug-clear
+
+#+begin_src elisp
+(vui-debug-clear)
+#+end_src
+
+Clear debug log buffer.
+
+* Quick Reference
+
+** Creating Components
+
+#+begin_src elisp
+(defcomponent NAME (PROPS...)
+  :state ((VAR INIT) ...)
+  :on-mount FORM
+  :on-update FORM
+  :on-unmount FORM
+  :should-update FORM
+  :render VNODE)
+#+end_src
+
+** Primitives
+
+| Function        | Description           |
+|-----------------+-----------------------|
+| =vui-text=      | Text content          |
+| =vui-newline=   | Line break            |
+| =vui-space=     | Horizontal space      |
+| =vui-fragment=  | Group without wrapper |
+| =vui-button=    | Clickable button      |
+| =vui-field=     | Text input            |
+| =vui-checkbox=  | Toggle checkbox       |
+| =vui-select=    | Selection dropdown    |
+
+** Layout
+
+| Function     | Description        |
+|--------------+--------------------|
+| =vui-hstack= | Horizontal layout  |
+| =vui-vstack= | Vertical layout    |
+| =vui-box=    | Fixed-width box    |
+| =vui-table=  | Table layout       |
+| =vui-list=   | List with keys     |
+
+** Hooks
+
+| Hook           | Description               |
+|----------------+---------------------------|
+| =use-effect=   | Side effects              |
+| =use-ref=      | Mutable reference         |
+| =use-callback= | Memoized callback         |
+| =use-memo=     | Memoized value            |
+
+** State
+
+| Function         | Description                |
+|------------------+----------------------------|
+| =vui-set-state=  | Update component state     |
+| =vui-batch=      | Batch multiple updates     |
+| =vui-flush-sync= | Force immediate render     |
+
+** Context
+
+| Macro/Function   | Description          |
+|------------------+----------------------|
+| =defcontext=     | Define context       |
+| =NAME-provider=  | Provide value        |
+| =use-NAME=       | Consume value        |
+
+** Debugging
+
+| Function              | Description                |
+|-----------------------+----------------------------|
+| =vui-inspect=         | Show component tree        |
+| =vui-inspect-state=   | Show state only            |
+| =vui-report-timing=   | Performance report         |
+| =vui-debug-show=      | Show debug log             |

@@ -1,0 +1,243 @@
+#+TITLE: vui.el
+#+AUTHOR: vui.el
+
+*Declarative, component-based UI framework for Emacs*
+
+Build reactive UIs in Emacs using familiar patterns from React and other modern
+UI frameworks. Define components with local state, props, lifecycle hooks, and
+automatic re-rendering.
+
+* Features
+
+- *Components* — Reusable UI building blocks with props and local state
+- *Reactive State* — Automatic re-rendering when state changes
+- *Hooks* — use-effect, use-ref, use-memo, use-callback
+- *Context* — Share data across component trees without prop drilling
+- *Layout Primitives* — hstack, vstack, box, table, list
+- *Error Boundaries* — Graceful error handling with fallback UI
+- *Developer Tools* — Component inspector, timing profiler, debug logging
+
+* Quick Example
+
+#+begin_src elisp
+(require 'vui)
+
+;; Define a component
+(defcomponent counter ()
+  :state ((count 0))
+  :render
+  (vui-fragment
+   (vui-text (format "Count: %d" count))
+   (vui-newline)
+   (vui-button "Increment"
+               :on-click (lambda ()
+                           (vui-set-state :count (1+ count))))))
+
+;; Mount it
+(vui-mount (vui-component 'counter) "*counter*")
+#+end_src
+
+Result: A buffer with text "Count: 0" and a clickable button. Each click
+updates the count and re-renders.
+
+* More Examples
+
+** Props and Composition
+
+#+begin_src elisp
+(defcomponent greeting (name)
+  :render
+  (vui-text (format "Hello, %s!" name)))
+
+(defcomponent app ()
+  :render
+  (vui-vstack
+   (vui-component 'greeting :name "Alice")
+   (vui-component 'greeting :name "Bob")))
+#+end_src
+
+** Form Input
+
+#+begin_src elisp
+(defcomponent name-form ()
+  :state ((name ""))
+  :render
+  (vui-fragment
+   (vui-text "Enter name: ")
+   (vui-field :value name
+              :size 20
+              :on-change (lambda (v) (vui-set-state :name v)))
+   (vui-newline)
+   (vui-text (if (string-empty-p name)
+                 "Type something..."
+               (format "Hello, %s!" name)))))
+#+end_src
+
+** Lifecycle Hooks
+
+#+begin_src elisp
+(defcomponent timer ()
+  :state ((seconds 0)
+          (timer nil))
+  :on-mount
+  (vui-set-state :timer
+                 (run-with-timer 1 1
+                                 (lambda ()
+                                   (vui-set-state :seconds (1+ seconds)))))
+  :on-unmount
+  (when timer (cancel-timer timer))
+
+  :render
+  (vui-text (format "Elapsed: %d seconds" seconds)))
+#+end_src
+
+** Context for Theme
+
+#+begin_src elisp
+(defcontext theme 'light)
+
+(defcomponent themed-button (label)
+  :render
+  (let ((theme (use-theme)))
+    (vui-button label
+                :face (if (eq theme 'dark)
+                          'custom-button-pressed
+                        'custom-button))))
+
+(defcomponent app ()
+  :render
+  (theme-provider 'dark
+    (vui-component 'themed-button :label "Click me")))
+#+end_src
+
+* Installation
+
+** Manual
+
+Clone this repository and add to your load-path:
+
+#+begin_src elisp
+(add-to-list 'load-path "/path/to/vui.el")
+(require 'vui)
+#+end_src
+
+** package.el (coming soon)
+
+#+begin_src elisp
+(use-package vui
+  :ensure t)
+#+end_src
+
+* Documentation
+
+| Document                               | Description                      |
+|----------------------------------------+----------------------------------|
+| [[file:docs/guide/01-getting-started.org][Getting Started]]                       | Installation and first component |
+| [[file:docs/guide/02-components.org][Components]]                             | Props, state, composition        |
+| [[file:docs/guide/03-primitives.org][Primitives]]                             | Text, button, field, etc.        |
+| [[file:docs/guide/04-layout.org][Layout]]                                 | hstack, vstack, table, list      |
+| [[file:docs/guide/05-hooks.org][Hooks]]                                  | use-effect, use-ref, use-memo    |
+| [[file:docs/guide/06-context.org][Context]]                                | Sharing data across components   |
+| [[file:docs/guide/07-lifecycle.org][Lifecycle]]                              | on-mount, on-update, on-unmount  |
+| [[file:docs/guide/08-error-handling.org][Error Handling]]                        | Error boundaries                 |
+| [[file:docs/guide/09-performance.org][Performance]]                            | Optimization techniques          |
+| [[file:docs/guide/10-dev-tools.org][Developer Tools]]                        | Inspector, profiler, debugging   |
+| [[file:docs/reference/api.org][API Reference]]                          | Complete function reference      |
+
+* Examples
+
+See [[file:docs/examples/][docs/examples/]] for complete, runnable examples:
+
+- [[file:docs/examples/01-hello-world.el][Hello World]] — Basic examples from the getting started guide
+- [[file:docs/examples/02-todo-app.el][Todo App]] — Full todo application with add/remove/filter
+- [[file:docs/examples/03-forms.el][Forms]] — Form validation, multi-step wizards, settings
+- [[file:docs/examples/04-file-browser.el][File Browser]] — Directory navigation with sorting and search
+
+* Available Components
+
+** Primitives
+
+| Component       | Description                          |
+|-----------------+--------------------------------------|
+| =vui-text=      | Styled text                          |
+| =vui-newline=   | Line break                           |
+| =vui-space=     | Horizontal spacing                   |
+| =vui-button=    | Clickable button with callback       |
+| =vui-field=     | Text input field                     |
+| =vui-checkbox=  | Toggle checkbox                      |
+| =vui-select=    | Selection from options               |
+| =vui-fragment=  | Group elements without wrapper       |
+
+** Layout
+
+| Component      | Description                            |
+|----------------+----------------------------------------|
+| =vui-hstack=   | Horizontal layout with spacing         |
+| =vui-vstack=   | Vertical layout with spacing/indent    |
+| =vui-box=      | Fixed-width container with alignment   |
+| =vui-table=    | Table with headers, borders, alignment |
+| =vui-list=     | Dynamic list with key-based reconcile  |
+
+* Hooks
+
+| Hook           | Description                                   |
+|----------------+-----------------------------------------------|
+| =use-effect=   | Side effects with cleanup                     |
+| =use-ref=      | Mutable reference (no re-render on change)    |
+| =use-callback= | Stable callback reference                     |
+| =use-memo=     | Cached computed value                         |
+
+* Developer Tools
+
+#+begin_src elisp
+;; Inspect component tree
+(vui-inspect)
+
+;; View state of all components
+(vui-inspect-state)
+
+;; Profile render performance
+(setq vui-timing-enabled t)
+;; ... interact with your app ...
+(vui-report-timing)
+
+;; Debug render cycles
+(setq vui-debug-enabled t)
+(vui-debug-show)
+#+end_src
+
+* Requirements
+
+- Emacs 27.1 or later
+- Built-in =widget.el= (included with Emacs)
+
+* Architecture
+
+vui.el implements a React-like architecture:
+
+1. *Virtual DOM* — Components return vnodes (virtual nodes)
+2. *Reconciliation* — Diffing algorithm to minimize DOM updates
+3. *Component Instances* — Maintain state and lifecycle across renders
+4. *Hooks System* — Composable state and effects
+5. *Context Stack* — Provider/consumer pattern for shared state
+
+* Contributing
+
+Contributions welcome! Please:
+
+1. Check existing issues before opening new ones
+2. Include tests for new features
+3. Follow existing code style
+4. Update documentation as needed
+
+* License
+
+GPL-3.0
+
+* Acknowledgments
+
+Inspired by:
+- React (component model, hooks)
+- Svelte (reactivity)
+- SolidJS (fine-grained updates)
+- Emacs widget.el (underlying implementation)

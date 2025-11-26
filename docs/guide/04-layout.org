@@ -1,0 +1,427 @@
+#+TITLE: Layout
+#+AUTHOR: vui.el Documentation
+#+OPTIONS: toc:2 num:t
+
+Layout primitives help you arrange UI elements in structured ways: horizontally,
+vertically, in boxes, or in tables.
+
+* Horizontal Layout — =vui-hstack=
+
+Arranges children horizontally with optional spacing:
+
+#+begin_src elisp
+(vui-hstack
+ (vui-text "One")
+ (vui-text "Two")
+ (vui-text "Three"))
+#+end_src
+
+Output:
+#+begin_example
+One Two Three
+#+end_example
+
+** Spacing
+
+Default spacing is 1 character. Customize with =:spacing=:
+
+#+begin_src elisp
+;; No spacing
+(vui-hstack :spacing 0
+            (vui-text "A")
+            (vui-text "B")
+            (vui-text "C"))
+;; Output: ABC
+
+;; Extra spacing
+(vui-hstack :spacing 3
+            (vui-text "One")
+            (vui-text "Two"))
+;; Output: One   Two
+#+end_src
+
+** Practical Example: Button Bar
+
+#+begin_src elisp
+(vui-hstack :spacing 2
+            (vui-button "Save" :on-click #'save-data)
+            (vui-button "Cancel" :on-click #'cancel)
+            (vui-button "Delete" :on-click #'delete-item
+                        :face '(:foreground "red")))
+#+end_src
+
+Output:
+#+begin_example
+[Save]  [Cancel]  [Delete]
+#+end_example
+
+* Vertical Layout — =vui-vstack=
+
+Arranges children vertically with optional spacing and indentation:
+
+#+begin_src elisp
+(vui-vstack
+ (vui-text "Line 1")
+ (vui-text "Line 2")
+ (vui-text "Line 3"))
+#+end_src
+
+Output:
+#+begin_example
+Line 1
+Line 2
+Line 3
+#+end_example
+
+** Spacing (Blank Lines)
+
+Add blank lines between items with =:spacing=:
+
+#+begin_src elisp
+(vui-vstack :spacing 1
+            (vui-text "Paragraph 1")
+            (vui-text "Paragraph 2")
+            (vui-text "Paragraph 3"))
+#+end_src
+
+Output:
+#+begin_example
+Paragraph 1
+
+Paragraph 2
+
+Paragraph 3
+#+end_example
+
+** Indentation
+
+Indent all children with =:indent=:
+
+#+begin_src elisp
+(vui-vstack :indent 4
+            (vui-text "- Item 1")
+            (vui-text "- Item 2")
+            (vui-text "- Item 3"))
+#+end_src
+
+Output:
+#+begin_example
+    - Item 1
+    - Item 2
+    - Item 3
+#+end_example
+
+** Combining Spacing and Indent
+
+#+begin_src elisp
+(vui-fragment
+ (vui-text "Tasks:")
+ (vui-newline)
+ (vui-vstack :spacing 1 :indent 2
+             (vui-text "• Write documentation")
+             (vui-text "• Add tests")
+             (vui-text "• Deploy")))
+#+end_src
+
+Output:
+#+begin_example
+Tasks:
+  • Write documentation
+
+  • Add tests
+
+  • Deploy
+#+end_example
+
+* Fixed-Width Box — =vui-box=
+
+Creates a fixed-width container with text alignment:
+
+#+begin_src elisp
+(vui-box (vui-text "Centered")
+         :width 20
+         :align 'center)
+#+end_src
+
+Output (20 chars wide):
+#+begin_example
+     Centered
+#+end_example
+
+** Alignment Options
+
+| Value    | Description                |
+|----------+----------------------------|
+| =left=   | Align to left (default)    |
+| =center= | Center in box              |
+| =right=  | Align to right             |
+
+#+begin_src elisp
+(vui-vstack
+ (vui-box (vui-text "Left") :width 20 :align 'left)
+ (vui-box (vui-text "Center") :width 20 :align 'center)
+ (vui-box (vui-text "Right") :width 20 :align 'right))
+#+end_src
+
+Output:
+#+begin_example
+Left
+        Center
+               Right
+#+end_example
+
+** Padding
+
+Add padding inside the box:
+
+#+begin_src elisp
+(vui-box (vui-text "Padded")
+         :width 20
+         :align 'center
+         :padding 2)
+#+end_src
+
+The padding reduces the available content width.
+
+** Practical Example: Aligned Form
+
+#+begin_src elisp
+(vui-vstack
+ (vui-hstack
+  (vui-box (vui-text "Name:") :width 10 :align 'right)
+  (vui-field :value name :size 20))
+ (vui-hstack
+  (vui-box (vui-text "Email:") :width 10 :align 'right)
+  (vui-field :value email :size 20))
+ (vui-hstack
+  (vui-box (vui-text "Phone:") :width 10 :align 'right)
+  (vui-field :value phone :size 20)))
+#+end_src
+
+Output:
+#+begin_example
+    Name: [                    ]
+   Email: [                    ]
+   Phone: [                    ]
+#+end_example
+
+* Tables — =vui-table=
+
+Creates formatted tables with optional headers and borders:
+
+#+begin_src elisp
+(vui-table
+ :rows '(("Alice" "Developer" "NYC")
+         ("Bob" "Designer" "LA")
+         ("Carol" "Manager" "Chicago")))
+#+end_src
+
+Output:
+#+begin_example
+Alice  Developer  NYC
+Bob    Designer   LA
+Carol  Manager    Chicago
+#+end_example
+
+** With Headers
+
+#+begin_src elisp
+(vui-table
+ :headers '("Name" "Role" "Location")
+ :rows '(("Alice" "Developer" "NYC")
+         ("Bob" "Designer" "LA")
+         ("Carol" "Manager" "Chicago")))
+#+end_src
+
+Output:
+#+begin_example
+Name   Role       Location
+Alice  Developer  NYC
+Bob    Designer   LA
+Carol  Manager    Chicago
+#+end_example
+
+** With Borders
+
+*** ASCII Borders
+
+#+begin_src elisp
+(vui-table
+ :headers '("Name" "Role" "Location")
+ :rows '(("Alice" "Developer" "NYC")
+         ("Bob" "Designer" "LA"))
+ :borders 'ascii)
+#+end_src
+
+Output:
+#+begin_example
++-------+-----------+----------+
+| Name  | Role      | Location |
++-------+-----------+----------+
+| Alice | Developer | NYC      |
+| Bob   | Designer  | LA       |
++-------+-----------+----------+
+#+end_example
+
+*** Unicode Borders
+
+#+begin_src elisp
+(vui-table
+ :headers '("Name" "Role")
+ :rows '(("Alice" "Developer")
+         ("Bob" "Designer"))
+ :borders 'unicode)
+#+end_src
+
+Output:
+#+begin_example
+┌───────┬───────────┐
+│ Name  │ Role      │
+├───────┼───────────┤
+│ Alice │ Developer │
+│ Bob   │ Designer  │
+└───────┴───────────┘
+#+end_example
+
+** Column Configuration
+
+Fine-tune columns with =:columns=:
+
+#+begin_src elisp
+(vui-table
+ :columns '((:header "ID" :width 5 :align right)
+            (:header "Product" :width 15 :align left)
+            (:header "Price" :width 10 :align right))
+ :rows '(("1" "Widget" "$9.99")
+         ("2" "Gadget" "$19.99")
+         ("3" "Gizmo" "$29.99"))
+ :borders 'ascii)
+#+end_src
+
+Output:
+#+begin_example
++------+-----------------+-----------+
+|   ID | Product         |     Price |
++------+-----------------+-----------+
+|    1 | Widget          |     $9.99 |
+|    2 | Gadget          |    $19.99 |
+|    3 | Gizmo           |    $29.99 |
++------+-----------------+-----------+
+#+end_example
+
+** Column Properties
+
+| Property  | Description                      |
+|-----------+----------------------------------|
+| =:header= | Column header text               |
+| =:width=  | Fixed width (auto if omitted)    |
+| =:align=  | =left=, =center=, or =right=     |
+
+* Dynamic Lists — =vui-list=
+
+Renders a list of items using a render function:
+
+#+begin_src elisp
+(vui-list '("Apple" "Banana" "Cherry")
+          (lambda (item)
+            (vui-text (format "• %s\n" item))))
+#+end_src
+
+Output:
+#+begin_example
+• Apple
+• Banana
+• Cherry
+#+end_example
+
+** With Key Function
+
+For efficient updates, provide a key function:
+
+#+begin_src elisp
+(vui-list todos
+          (lambda (todo)
+            (vui-component 'todo-item :todo todo))
+          (lambda (todo)
+            (plist-get todo :id)))  ; Key function
+#+end_src
+
+The key function returns a unique identifier for each item.
+
+** Complex List Items
+
+#+begin_src elisp
+(defcomponent product-list ()
+  :state ((products '((:id 1 :name "Widget" :price 9.99)
+                      (:id 2 :name "Gadget" :price 19.99))))
+  :render
+  (vui-vstack :spacing 1
+              (vui-list products
+                        (lambda (product)
+                          (vui-hstack
+                           (vui-text (plist-get product :name))
+                           (vui-text (format " - $%.2f"
+                                             (plist-get product :price)))))
+                        (lambda (product)
+                          (plist-get product :id)))))
+#+end_src
+
+* Nesting Layouts
+
+Layouts can be nested for complex structures:
+
+#+begin_src elisp
+(vui-vstack :spacing 1
+            ;; Header row
+            (vui-hstack :spacing 2
+                        (vui-text "Dashboard" :face 'bold)
+                        (vui-button "Refresh"))
+
+            ;; Two-column content
+            (vui-hstack :spacing 4
+                        ;; Left column
+                        (vui-vstack
+                         (vui-text "Statistics")
+                         (vui-text "Users: 100")
+                         (vui-text "Sales: 50"))
+
+                        ;; Right column
+                        (vui-vstack
+                         (vui-text "Actions")
+                         (vui-button "Add User")
+                         (vui-button "View Report"))))
+#+end_src
+
+* Summary
+
+| Primitive    | Purpose                      | Key Props                    |
+|--------------+------------------------------+------------------------------|
+| =vui-hstack= | Horizontal arrangement       | =:spacing=                   |
+| =vui-vstack= | Vertical arrangement         | =:spacing=, =:indent=        |
+| =vui-box=    | Fixed-width container        | =:width=, =:align=, =:padding= |
+| =vui-table=  | Tabular data                 | =:headers=, =:rows=, =:borders= |
+| =vui-list=   | Dynamic list rendering       | items, render-fn, key-fn     |
+
+* Try It Yourself
+
+#+begin_quote
+*Exercise*: Create a =dashboard= component that displays:
+1. A title "My Dashboard" at the top
+2. A table of tasks with columns: Status, Task, Due Date
+3. A button bar at the bottom with "Add Task" and "Clear Done" buttons
+#+end_quote
+
+#+begin_src elisp
+(defcomponent dashboard ()
+  :state ((tasks '(("[ ]" "Write docs" "2024-01-15")
+                   ("[X]" "Add tests" "2024-01-10")
+                   ("[ ]" "Deploy" "2024-01-20"))))
+  :render
+  ;; Your implementation here
+  )
+#+end_src
+
+* What's Next?
+
+- [[file:05-hooks.org][Hooks]] — use-effect, use-ref, use-memo
+- [[file:03-primitives.org][Primitives]] — Basic UI elements
