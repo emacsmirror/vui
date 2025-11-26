@@ -13,9 +13,17 @@
 (require 'vui)
 
 ;;; Context: Current Path
-;; Share the current directory path across components
+;; Share the current directory path and setter across components
 
 (defcontext file-browser-path)
+(defcontext file-browser-set-path)
+
+(defun set-file-browser-path (new-path)
+  "Set the file browser path to NEW-PATH.
+Must be called from within a file-browser component tree."
+  (let ((setter (use-file-browser-set-path)))
+    (when setter
+      (funcall setter new-path))))
 
 
 ;;; Breadcrumb Navigation
@@ -286,9 +294,14 @@
 ;;; Root App with Context Provider
 
 (defcomponent file-browser (initial-path)
+  :state ((path (or initial-path (expand-file-name "~"))))
+
   :render
-  (file-browser-path-provider (or initial-path (expand-file-name "~"))
-                              (vui-component 'file-browser-main)))
+  (file-browser-path-provider
+   path
+   (file-browser-set-path-provider
+    (lambda (new-path) (vui-set-state :path new-path))
+    (vui-component 'file-browser-main))))
 
 
 ;;; Demo Function
