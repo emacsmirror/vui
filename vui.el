@@ -90,6 +90,7 @@
   size
   placeholder
   on-change
+  on-submit  ; Called with value when user presses RET
   face)
 
 ;; Primitive: checkbox
@@ -298,16 +299,43 @@ PROPS is a plist accepting :on-click, :face, :disabled, :key."
    :disabled-p (plist-get props :disabled)
    :key (plist-get props :key)))
 
-(defun vui-field (value &rest props)
-  "Create a field vnode with VALUE and optional PROPS.
-PROPS is a plist accepting :size, :placeholder, :on-change, :face, :key."
+(cl-defun vui-field (&key value size on-change on-submit key face)
+  "Create a field vnode.
+All arguments are keyword-based:
+  :value      - initial field content (defaults to empty string)
+  :size       - field width in characters
+  :on-change  - called with value on each change (triggers re-render)
+  :on-submit  - called with value when user presses RET (no re-render)
+  :key        - identifier for `vui-field-value' lookup
+  :face       - text face
+
+Examples:
+  (vui-field :size 20 :key \\='my-input)
+  (vui-field :value \"initial\" :size 20 :on-submit #\\='handle-submit)"
   (vui-vnode-field--create
    :value (or value "")
-   :size (plist-get props :size)
-   :placeholder (plist-get props :placeholder)
-   :on-change (plist-get props :on-change)
-   :face (plist-get props :face)
-   :key (plist-get props :key)))
+   :size size
+   :on-change on-change
+   :on-submit on-submit
+   :face face
+   :key key))
+
+(defun vui-field-value (key)
+  "Get the current value of a field identified by KEY.
+Returns the field's current text, or nil if no field with KEY exists.
+Use this to read field values in button callbacks without triggering re-renders.
+
+Example:
+  (vui-field :key \\='my-input :size 20)
+  (vui-button \"Submit\"
+    :on-click (lambda ()
+                (let ((text (vui-field-value \\='my-input)))
+                  ...)))"
+  (catch 'found
+    (dolist (w widget-field-list)
+      (when (and (eq (car w) 'editable-field)
+                 (eq (widget-get w :vui-key) key))
+        (throw 'found (widget-value w))))))
 
 (defun vui-checkbox (&rest props)
   "Create a checkbox vnode.
@@ -456,13 +484,35 @@ PROPS-AND-CHILDREN is a plist of props, optionally ending with :children."
 (defvar vui--root-instance nil
   "The root component instance for the current buffer.")
 
+(defun vui--find-state-owner (instance key)
+  "Find the instance that owns state KEY, starting from INSTANCE.
+Searches up the parent chain. Returns INSTANCE if KEY exists in its state,
+or the nearest ancestor that has KEY, or INSTANCE as fallback."
+  (let ((current instance)
+        (found nil))
+    ;; First check if current instance has this key
+    (when (plist-member (vui-instance-state current) key)
+      (setq found current))
+    ;; If not found, search up parent chain
+    (unless found
+      (setq current (vui-instance-parent instance))
+      (while (and current (not found))
+        (when (plist-member (vui-instance-state current) key)
+          (setq found current))
+        (setq current (vui-instance-parent current))))
+    ;; Return found instance or original as fallback
+    (or found instance)))
+
 (defun vui-set-state (key value)
-  "Set state KEY to VALUE in the current component and re-render.
+  "Set state KEY to VALUE in the appropriate component and re-render.
+Searches for the component that owns KEY, starting from the current
+component and going up the parent chain.
 Must be called from within a component's event handler."
   (unless vui--current-instance
     (error "vui-set-state called outside of component context"))
-  (setf (vui-instance-state vui--current-instance)
-        (plist-put (vui-instance-state vui--current-instance) key value))
+  (let ((target (vui--find-state-owner vui--current-instance key)))
+    (setf (vui-instance-state target)
+          (plist-put (vui-instance-state target) key value)))
   ;; Re-render from the root
   (when vui--root-instance
     (vui--rerender-instance vui--root-instance)))
@@ -474,9 +524,13 @@ Must be called from within a component's event handler."
       (with-current-buffer buffer
         (let* ((inhibit-read-only t)
                (inhibit-redisplay t)  ; Prevent flicker
+               (inhibit-modification-hooks t)  ; Prevent widget-after-change errors
                ;; Save widget-relative position
                (cursor-info (vui--save-cursor-position))
                (vui--root-instance instance))
+          ;; Clear widget tracking before re-render
+          (setq widget-field-list nil)
+          (setq widget-field-new nil)
           ;; Remove only widget overlays, preserve others (like hl-line)
           (vui--remove-widget-overlays)
           (erase-buffer)
@@ -827,16 +881,28 @@ Returns (WIDGET-INDEX . DELTA) or (nil . (LINE . COL))."
    ((vui-vnode-field-p vnode)
     (let ((value (vui-vnode-field-value vnode))
           (size (vui-vnode-field-size vnode))
-          (placeholder (vui-vnode-field-placeholder vnode))
-          (on-change (vui-vnode-field-on-change vnode)))
-      (widget-create 'editable-field
-                     :size (or size 20)
-                     :value (if (and (string-empty-p value) placeholder)
-                                placeholder
-                              value)
-                     :notify (lambda (widget &rest _)
-                               (when on-change
-                                 (funcall on-change (widget-value widget)))))))
+          (field-key (vui-vnode-field-key vnode))
+          (on-change (vui-vnode-field-on-change vnode))
+          (on-submit (vui-vnode-field-on-submit vnode))
+          ;; Capture instance context for callback
+          (captured-instance vui--current-instance)
+          (captured-root vui--root-instance))
+      (let ((w (widget-create 'editable-field
+                              :size (or size 20)
+                              :value value
+                              :notify (lambda (widget &rest _)
+                                        (when on-change
+                                          (let ((vui--current-instance captured-instance)
+                                                (vui--root-instance captured-root))
+                                            (funcall on-change (widget-value widget)))))
+                              :action (lambda (widget &optional _event)
+                                        (when on-submit
+                                          (let ((vui--current-instance captured-instance)
+                                                (vui--root-instance captured-root))
+                                            (funcall on-submit (widget-value widget))))))))
+        ;; Store key on widget for vui-field-value lookup
+        (when field-key
+          (widget-put w :vui-key field-key)))))
 
    ;; Component - reconcile and render
    ((vui-vnode-component-p vnode)
@@ -902,6 +968,8 @@ Returns the root instance."
         (setq-local vui--root-instance instance)
         (let ((vui--root-instance instance))
           (vui--render-instance instance))
+        ;; widget-setup installs before-change-functions that prevent
+        ;; editing outside of editable fields - no need for buffer-read-only
         (widget-setup)
         (use-local-map widget-keymap)
         (goto-char (point-min))))
@@ -1126,8 +1194,7 @@ Demonstrates vui-checkbox and vui-select."
 (defcomponent vui-todo-demo ()
   :state ((todos (list (list :id (cl-incf vui--todo-counter) :text "Learn vui.el" :done nil)
                        (list :id (cl-incf vui--todo-counter) :text "Build something cool" :done nil)
-                       (list :id (cl-incf vui--todo-counter) :text "Share with others" :done nil)))
-          (new-text ""))
+                       (list :id (cl-incf vui--todo-counter) :text "Share with others" :done nil))))
   :render
   (vui-vstack
    :spacing 1
@@ -1136,19 +1203,17 @@ Demonstrates vui-checkbox and vui-select."
 
    ;; Add new todo
    (vui-hstack
-    (vui-field new-text
-               :size 25
-               :placeholder "New todo..."
-               :on-change (lambda (v) (vui-set-state :new-text v)))
+    (vui-text "New: ")
+    (vui-field :size 20 :key 'new-todo-input)
     (vui-button "Add"
                 :on-click (lambda ()
-                            (when (not (string-empty-p new-text))
-                              (vui-set-state
-                               :todos (append todos
-                                              (list (list :id (cl-incf vui--todo-counter)
-                                                          :text new-text
-                                                          :done nil))))
-                              (vui-set-state :new-text "")))))
+                            (let ((text (vui-field-value 'new-todo-input)))
+                              (when (and text (not (string-empty-p text)))
+                                (vui-set-state
+                                 :todos (append todos
+                                                (list (list :id (cl-incf vui--todo-counter)
+                                                            :text text
+                                                            :done nil)))))))))
 
    ;; Todo items
    (vui-vstack
