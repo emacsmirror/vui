@@ -52,10 +52,12 @@
       (sqrt (/ sum-sq (float (length values)))))))
 
 (defun vui-example--format-score (value &optional decimals)
-  "Format VALUE as score with DECIMALS places, or — if nil."
-  (if value
-      (format (format "%%.%df" (or decimals 2)) value)
-    "—"))
+  "Format VALUE as score with DECIMALS places, or — if nil.
+Always returns a fixed-width string for consistent table alignment."
+  (let ((width (+ 2 (or decimals 2))))  ; "X.XX" format width
+    (if value
+        (format (format "%%%d.%df" width (or decimals 2)) value)
+      (format (format "%%%ds" width) "—"))))
 
 
 ;;; Score Input Component
@@ -220,32 +222,29 @@
                                 (cons (cons participant new-pscores) scores))))
              (vui-set-state :scores new-scores)))))
 
-    (vui-vstack :spacing 1
-                ;; Title
-                (vui-text "Wine Tasting: Domaine Leflaive" :face 'bold)
-                (vui-newline)
-
-                ;; Summary
-                (vui-component 'summary-table
-                               :scores scores
-                               :wines wines)
-                (vui-newline)
-
-                ;; Wines table
-                (vui-text "Wines" :face 'bold)
-                (vui-component 'wines-table
-                               :wines wines
-                               :scores scores)
-                (vui-newline)
-
-                ;; Personal scores (editable)
-                (vui-text "Personal Scores" :face 'bold)
-                (vui-text "(Click score to edit, RET to confirm)")
-                (vui-component 'personal-scores-table
-                               :wines wines
-                               :participants participants
-                               :scores scores
-                               :on-score-change on-score-change))))
+    (vui-vstack
+     ;; Title
+     (vui-text "Wine Tasting: Domaine Leflaive" :face 'bold)
+     (vui-newline)
+     ;; Summary
+     (vui-component 'summary-table
+                    :scores scores
+                    :wines wines)
+     (vui-newline)
+     ;; Wines table
+     (vui-text "Wines" :face 'bold)
+     (vui-component 'wines-table
+                    :wines wines
+                    :scores scores)
+     (vui-newline)
+     ;; Personal scores (editable)
+     (vui-text "Personal Scores" :face 'bold)
+     (vui-text "(Click score to edit, RET to confirm)")
+     (vui-component 'personal-scores-table
+                    :wines wines
+                    :participants participants
+                    :scores scores
+                    :on-score-change on-score-change))))
 
 
 ;;; Demo Function
