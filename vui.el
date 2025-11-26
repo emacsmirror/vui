@@ -41,13 +41,154 @@
   :group 'tools
   :prefix "vui-")
 
-;;; Core Data Structures
+;;; Core Data Structures - Virtual Nodes
 
-;; TODO: Implement core data structures from design doc
+;; Base structure for all virtual nodes
+(cl-defstruct (vui-vnode (:constructor nil))
+  "Base type for virtual tree nodes."
+  key)
+
+;; Primitive: raw text
+(cl-defstruct (vui-vnode-text (:include vui-vnode)
+                              (:constructor vui-vnode-text--create))
+  "Virtual node representing plain text."
+  content
+  face
+  properties)
+
+;; Container: sequence of children
+(cl-defstruct (vui-vnode-fragment (:include vui-vnode)
+                                  (:constructor vui-vnode-fragment--create))
+  "Virtual node that groups children without wrapper."
+  children)
+
+;; Primitive: newline
+(cl-defstruct (vui-vnode-newline (:include vui-vnode)
+                                 (:constructor vui-vnode-newline--create))
+  "Virtual node representing a line break.")
+
+;; Primitive: horizontal space
+(cl-defstruct (vui-vnode-space (:include vui-vnode)
+                               (:constructor vui-vnode-space--create))
+  "Virtual node representing whitespace."
+  width)
+
+;;; Constructor Functions
+
+(defun vui-text (content &rest props)
+  "Create a text vnode with CONTENT and optional PROPS.
+PROPS is a plist accepting :face, :key, and other text properties."
+  (vui-vnode-text--create
+   :content content
+   :face (plist-get props :face)
+   :key (plist-get props :key)
+   :properties (cl-loop for (k v) on props by #'cddr
+                        unless (memq k '(:face :key))
+                        append (list k v))))
+
+(defun vui-fragment (&rest children)
+  "Create a fragment vnode containing CHILDREN."
+  (vui-vnode-fragment--create :children children))
+
+(defun vui-newline (&optional key)
+  "Create a newline vnode with optional KEY."
+  (vui-vnode-newline--create :key key))
+
+(defun vui-space (&optional width key)
+  "Create a space vnode with WIDTH spaces (default 1) and optional KEY."
+  (vui-vnode-space--create :width (or width 1) :key key))
+
+;;; Rendering
+
+(defun vui--render-vnode (vnode)
+  "Render VNODE into the current buffer at point."
+  (cond
+   ;; Text node
+   ((vui-vnode-text-p vnode)
+    (let ((start (point))
+          (content (vui-vnode-text-content vnode))
+          (face (vui-vnode-text-face vnode))
+          (props (vui-vnode-text-properties vnode)))
+      (insert content)
+      (when (or face props)
+        (let ((end (point)))
+          (when face
+            (put-text-property start end 'face face))
+          (when props
+            (add-text-properties start end props))))))
+
+   ;; Fragment - render all children
+   ((vui-vnode-fragment-p vnode)
+    (dolist (child (vui-vnode-fragment-children vnode))
+      (vui--render-vnode child)))
+
+   ;; Newline
+   ((vui-vnode-newline-p vnode)
+    (insert "\n"))
+
+   ;; Space
+   ((vui-vnode-space-p vnode)
+    (insert (make-string (vui-vnode-space-width vnode) ?\s)))
+
+   ;; String shorthand
+   ((stringp vnode)
+    (insert vnode))
+
+   ;; Nil - skip
+   ((null vnode)
+    nil)
+
+   (t
+    (error "Unknown vnode type: %S" (type-of vnode)))))
 
 ;;; Public API
 
-;; TODO: Implement public API
+(defun vui-render (vnode &optional buffer)
+  "Render VNODE tree into BUFFER (default: current buffer).
+Clears the buffer before rendering."
+  (with-current-buffer (or buffer (current-buffer))
+    (let ((inhibit-read-only t))
+      (erase-buffer)
+      (vui--render-vnode vnode))))
+
+(defun vui-render-to-buffer (buffer-name vnode)
+  "Render VNODE into a buffer named BUFFER-NAME.
+Creates the buffer if it doesn't exist, switches to it."
+  (let ((buf (get-buffer-create buffer-name)))
+    (vui-render vnode buf)
+    (switch-to-buffer buf)
+    buf))
+
+;;; Demo
+
+(defun vui-demo ()
+  "Show a demo of vui.el rendering capabilities."
+  (interactive)
+  (vui-render-to-buffer "*vui-demo*"
+    (vui-fragment
+     (vui-text "Welcome to " :face 'font-lock-keyword-face)
+     (vui-text "vui.el" :face 'bold)
+     (vui-text "!" :face 'font-lock-keyword-face)
+     (vui-newline)
+     (vui-newline)
+     (vui-text "A declarative UI library for Emacs." :face 'font-lock-doc-face)
+     (vui-newline)
+     (vui-newline)
+     (vui-text "Features:" :face 'font-lock-function-name-face)
+     (vui-newline)
+     (vui-text "  • " :face 'font-lock-comment-face)
+     (vui-text "Text nodes with faces")
+     (vui-newline)
+     (vui-text "  • " :face 'font-lock-comment-face)
+     (vui-text "Fragments for grouping")
+     (vui-newline)
+     (vui-text "  • " :face 'font-lock-comment-face)
+     (vui-text "Newlines and spaces")
+     (vui-newline)
+     (vui-newline)
+     (vui-text "Try: " :face 'font-lock-comment-face)
+     (vui-text "(vui-render-to-buffer \"*test*\" (vui-text \"Hello!\"))"
+               :face 'font-lock-string-face))))
 
 (provide 'vui)
 ;;; vui.el ends here
