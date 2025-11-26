@@ -143,6 +143,28 @@
   props      ; Plist of props to pass
   children)  ; List of child vnodes (passed as :children prop)
 
+;;; Context System
+
+;; Context definition
+(cl-defstruct (vui-context (:constructor vui-context--create))
+  "A context definition."
+  name              ; Symbol identifying this context
+  default-value)    ; Value when no provider found
+
+;; Context provider vnode
+(cl-defstruct (vui-vnode-provider (:include vui-vnode)
+                                  (:constructor vui-vnode-provider--create))
+  "A context provider vnode."
+  context           ; The vui-context being provided
+  value             ; The value to provide
+  children)         ; Child vnodes
+
+;; Runtime context binding
+(cl-defstruct (vui-context-binding (:constructor vui-context-binding--create))
+  "Runtime binding of a context to a value."
+  context           ; The vui-context
+  value)            ; Current provided value
+
 ;;; Component System
 
 ;; Component definition - the template
@@ -195,6 +217,10 @@
 
 (defvar vui--ref-index 0
   "Counter for auto-generating ref IDs within a component render.")
+
+(defvar vui--context-stack nil
+  "Stack of context bindings during render.
+Each entry is a vui-context-binding.")
 
 (defun vui--register-component (def)
   "Register component definition DEF in the registry."
@@ -654,6 +680,62 @@ Called from within a component's render function."
           (puthash ref-id ref refs)
           ref))))
 
+;;; Context API
+
+(defmacro defcontext (name &optional default-value docstring)
+  "Define a context NAME with optional DEFAULT-VALUE.
+
+Creates:
+- `NAME-context': The context object
+- `NAME-provider': Function to create a provider vnode
+- `use-NAME': Function to consume the context value
+
+Example:
+  (defcontext theme \\='light \"The current UI theme.\")
+
+  ;; In a component:
+  (theme-provider \\='dark
+    (vui-component \\='my-button))
+
+  ;; In my-button:
+  (let ((theme (use-theme)))
+    (vui-text (format \"Theme: %s\" theme)))"
+  (declare (doc-string 3) (indent 1))
+  (let ((context-var (intern (format "%s-context" name)))
+        (provider-fn (intern (format "%s-provider" name)))
+        (consumer-fn (intern (format "use-%s" name))))
+    `(progn
+       ;; The context object
+       (defvar ,context-var
+         (vui-context--create
+          :name ',name
+          :default-value ,default-value)
+         ,(or docstring (format "Context for %s." name)))
+
+       ;; Provider function
+       (defun ,provider-fn (value &rest children)
+         ,(format "Provide %s context with VALUE to CHILDREN." name)
+         (vui-vnode-provider--create
+          :context ,context-var
+          :value value
+          :children children))
+
+       ;; Consumer hook
+       (defun ,consumer-fn ()
+         ,(format "Get current %s context value." name)
+         (vui--consume-context ,context-var))
+
+       ',name)))
+
+(defun vui--consume-context (context)
+  "Get the current value of CONTEXT.
+Searches up the context stack for a matching provider.
+Returns default-value if no provider found."
+  (or (cl-loop for binding in vui--context-stack
+               when (eq (vui-context-binding-context binding) context)
+               return (vui-context-binding-value binding))
+      (vui-context-default-value context)))
+
 (defun vui--rerender-instance (instance)
   "Re-render INSTANCE and update the buffer."
   (let ((buffer (vui-instance-buffer instance)))
@@ -1055,6 +1137,21 @@ Returns (WIDGET-INDEX . DELTA) or (nil . (LINE . COL))."
       ;; Track this child for future reconciliation
       (push instance vui--new-children)
       (vui--render-instance instance)))
+
+   ;; Context provider - push context and render children
+   ((vui-vnode-provider-p vnode)
+    (let* ((context (vui-vnode-provider-context vnode))
+           (value (vui-vnode-provider-value vnode))
+           (children (vui-vnode-provider-children vnode))
+           ;; Push new binding onto context stack
+           (vui--context-stack
+            (cons (vui-context-binding--create
+                   :context context
+                   :value value)
+                  vui--context-stack)))
+      ;; Render all children with the new context
+      (dolist (child children)
+        (vui--render-vnode child))))
 
    ;; String shorthand
    ((stringp vnode)
