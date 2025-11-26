@@ -134,6 +134,12 @@
 (defvar vui--instance-counter 0
   "Counter for generating unique instance IDs.")
 
+(defvar vui--child-index 0
+  "Index counter for child components during render (for keyless reconciliation).")
+
+(defvar vui--new-children nil
+  "Accumulator for child instances created during render.")
+
 (defun vui--register-component (def)
   "Register component definition DEF in the registry."
   (puthash (vui-component-def-name def) def vui--component-registry))
@@ -298,15 +304,39 @@ Must be called from within a component's event handler."
 (defun vui--render-instance (instance)
   "Render a component INSTANCE into the current buffer."
   (let* ((vui--current-instance instance)
+         (vui--child-index 0)
+         (vui--new-children nil)
          (def (vui-instance-def instance))
          (render-fn (vui-component-def-render-fn def))
          (props (vui-instance-props instance))
          (state (vui-instance-state instance))
          (vtree (funcall render-fn props state)))
-    (vui--render-vnode vtree)))
+    (vui--render-vnode vtree)
+    ;; Update children list for next reconciliation
+    (setf (vui-instance-children instance) (nreverse vui--new-children))))
 
-(defun vui--instantiate-component (vnode &optional parent)
-  "Create an instance from a component VNODE with optional PARENT."
+(defun vui--find-matching-child (parent type key index)
+  "Find a child of PARENT matching TYPE and KEY or INDEX."
+  (when parent
+    (let ((children (vui-instance-children parent)))
+      (if key
+          ;; Key-based lookup
+          (cl-find-if (lambda (child)
+                        (and (eq (vui-component-def-name (vui-instance-def child)) type)
+                             (equal (vui-vnode-key (vui-instance-vnode child)) key)))
+                      children)
+        ;; Index-based lookup (same type at same position)
+        (let ((same-type-index 0))
+          (cl-find-if (lambda (child)
+                        (when (eq (vui-component-def-name (vui-instance-def child)) type)
+                          (if (= same-type-index index)
+                              t
+                            (cl-incf same-type-index)
+                            nil)))
+                      children))))))
+
+(defun vui--create-instance (vnode &optional parent)
+  "Create a new component instance from VNODE with optional PARENT."
   (let* ((type (vui-vnode-component-type vnode))
          (def (vui--get-component type))
          (props (vui-vnode-component-props vnode))
@@ -326,7 +356,29 @@ Must be called from within a component's event handler."
      :vnode vnode
      :parent parent
      :children nil
+     :buffer (when parent (vui-instance-buffer parent))
      :mounted-p nil)))
+
+(defun vui--reconcile-component (vnode parent)
+  "Reconcile VNODE with existing child of PARENT, or create new instance."
+  (let* ((type (vui-vnode-component-type vnode))
+         (key (vui-vnode-key vnode))
+         (index vui--child-index)
+         (existing (vui--find-matching-child parent type key index))
+         (props (vui-vnode-component-props vnode))
+         (children (vui-vnode-component-children vnode))
+         (props-with-children (if children
+                                  (plist-put (copy-sequence props) :children children)
+                                props)))
+    (cl-incf vui--child-index)
+    (if existing
+        ;; Reuse existing instance, update props
+        (progn
+          (setf (vui-instance-props existing) props-with-children)
+          (setf (vui-instance-vnode existing) vnode)
+          existing)
+      ;; Create new instance
+      (vui--create-instance vnode parent))))
 
 ;;; Rendering
 
@@ -402,9 +454,11 @@ Must be called from within a component's event handler."
                                (when on-change
                                  (funcall on-change (widget-value widget)))))))
 
-   ;; Component - instantiate and render
+   ;; Component - reconcile and render
    ((vui-vnode-component-p vnode)
-    (let ((instance (vui--instantiate-component vnode vui--current-instance)))
+    (let ((instance (vui--reconcile-component vnode vui--current-instance)))
+      ;; Track this child for future reconciliation
+      (push instance vui--new-children)
       (vui--render-instance instance)))
 
    ;; String shorthand
@@ -452,7 +506,7 @@ BUFFER-NAME defaults to \"*vui*\".
 Returns the root instance."
   (let* ((buf-name (or buffer-name "*vui*"))
          (buf (get-buffer-create buf-name))
-         (instance (vui--instantiate-component component-vnode nil)))
+         (instance (vui--create-instance component-vnode nil)))
     ;; Store buffer reference in instance for re-rendering
     (setf (vui-instance-buffer instance) buf)
     (with-current-buffer buf
@@ -472,10 +526,29 @@ Returns the root instance."
 
 ;;; Demo
 
-;; Demo app with state at the root level
-;; Note: Nested stateful components require reconciliation (future feature)
-(defcomponent vui-demo-app ()
+;; Reusable counter component with its own state
+(defcomponent vui-counter (label)
   :state ((count 0))
+  :render
+  (vui-fragment
+   (vui-text (or label "Counter") :face 'font-lock-function-name-face)
+   (vui-text ": ")
+   (vui-text (number-to-string count) :face 'bold)
+   (vui-space 2)
+   (vui-button "+"
+               :on-click (lambda ()
+                           (vui-set-state :count (1+ count))))
+   (vui-space)
+   (vui-button "-"
+               :on-click (lambda ()
+                           (vui-set-state :count (1- count))))
+   (vui-space)
+   (vui-button "0"
+               :on-click (lambda ()
+                           (vui-set-state :count 0)))))
+
+;; Main demo app - demonstrates nested stateful components
+(defcomponent vui-demo-app ()
   :render
   (vui-fragment
    (vui-text "Welcome to " :face 'font-lock-keyword-face)
@@ -486,23 +559,14 @@ Returns the root instance."
    (vui-text "A declarative, component-based UI library." :face 'font-lock-doc-face)
    (vui-newline)
    (vui-newline)
-   ;; Counter with state
-   (vui-text "Counter: " :face 'font-lock-function-name-face)
-   (vui-text (number-to-string count) :face 'bold)
+   ;; Two independent counter components - each maintains its own state!
+   (vui-component 'vui-counter :label "Apples")
+   (vui-newline)
+   (vui-component 'vui-counter :label "Oranges")
    (vui-newline)
    (vui-newline)
-   (vui-button "  +  "
-               :on-click (lambda ()
-                           (vui-set-state :count (1+ count))))
-   (vui-space 2)
-   (vui-button "  -  "
-               :on-click (lambda ()
-                           (vui-set-state :count (1- count))))
-   (vui-space 2)
-   (vui-button "Reset"
-               :on-click (lambda ()
-                           (vui-set-state :count 0)))
-   (vui-newline)
+   (vui-text "Each counter has independent state (reconciliation!)"
+             :face 'font-lock-comment-face)
    (vui-newline)
    (vui-text "TAB: navigate | RET: activate" :face 'font-lock-comment-face)))
 

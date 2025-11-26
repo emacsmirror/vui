@@ -251,4 +251,55 @@
                                  :children (list (vui-text "content"))))
       (expect (buffer-string) :to-equal "[content]"))))
 
+(describe "reconciliation"
+  (it "preserves child component state across parent re-render"
+    ;; Define a child component with state
+    (defcomponent stateful-child ()
+      :state ((value 42))
+      :render (vui-text (number-to-string value)))
+    ;; Define parent that renders the child
+    (defcomponent parent-comp ()
+      :state ((label "test"))
+      :render (vui-fragment
+               (vui-text label)
+               (vui-text ":")
+               (vui-component 'stateful-child)))
+    ;; Mount and verify initial render
+    (let* ((instance (vui-mount (vui-component 'parent-comp) "*test-recon*")))
+      (unwind-protect
+          (progn
+            (expect (buffer-string) :to-equal "test:42")
+            ;; Get the child instance and change its state
+            (let ((child (car (vui-instance-children instance))))
+              (expect child :to-be-truthy)
+              ;; Manually set child state
+              (setf (vui-instance-state child)
+                    (plist-put (vui-instance-state child) :value 100)))
+            ;; Re-render parent (simulating state change)
+            (vui--rerender-instance instance)
+            ;; Child state should be preserved
+            (expect (buffer-string) :to-equal "test:100"))
+        (kill-buffer "*test-recon*"))))
+
+  (it "reuses child by index when no key provided"
+    (defcomponent indexed-child (label)
+      :state ((count 0))
+      :render (vui-text (format "%s:%d" label count)))
+    (defcomponent indexed-parent ()
+      :render (vui-fragment
+               (vui-component 'indexed-child :label "A")
+               (vui-component 'indexed-child :label "B")))
+    (let ((instance (vui-mount (vui-component 'indexed-parent) "*test-idx*")))
+      (unwind-protect
+          (progn
+            (expect (buffer-string) :to-equal "A:0B:0")
+            ;; Set state on first child
+            (let ((first-child (car (vui-instance-children instance))))
+              (setf (vui-instance-state first-child)
+                    (plist-put (vui-instance-state first-child) :count 5)))
+            (vui--rerender-instance instance)
+            ;; First child should preserve state, second should stay 0
+            (expect (buffer-string) :to-equal "A:5B:0"))
+        (kill-buffer "*test-idx*")))))
+
 ;;; vui-test.el ends here
