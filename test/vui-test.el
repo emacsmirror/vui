@@ -1826,4 +1826,121 @@
             (expect (length items) :to-equal 3))
         (kill-buffer "*test-lookup3*")))))
 
+(describe "debug logging"
+  (before-each
+    (setq vui-debug-enabled nil)
+    (vui-debug-clear))
+
+  (after-each
+    (setq vui-debug-enabled nil)
+    (vui-debug-clear)
+    (when (get-buffer "*vui-debug*")
+      (kill-buffer "*vui-debug*")))
+
+  (it "does not log when disabled"
+    (setq vui-debug-enabled nil)
+    (defcomponent debug-off-test ()
+      :render (vui-text "OK"))
+    (let ((instance (vui-mount (vui-component 'debug-off-test) "*test-debug1*")))
+      (unwind-protect
+          (let ((buf (get-buffer "*vui-debug*")))
+            (if buf
+                (with-current-buffer buf
+                  (expect (buffer-string) :to-equal ""))
+              (expect buf :to-be nil)))
+        (kill-buffer "*test-debug1*"))))
+
+  (it "logs render phase when enabled"
+    (setq vui-debug-enabled t)
+    (defcomponent debug-render-test ()
+      :render (vui-text "OK"))
+    (let ((instance (vui-mount (vui-component 'debug-render-test) "*test-debug2*")))
+      (unwind-protect
+          (with-current-buffer "*vui-debug*"
+            (let ((content (buffer-string)))
+              (expect content :to-match "render:")
+              (expect content :to-match "debug-render-test")))
+        (kill-buffer "*test-debug2*"))))
+
+  (it "logs mount phase"
+    (setq vui-debug-enabled t)
+    (defcomponent debug-mount-test ()
+      :render (vui-text "OK"))
+    (let ((instance (vui-mount (vui-component 'debug-mount-test) "*test-debug3*")))
+      (unwind-protect
+          (with-current-buffer "*vui-debug*"
+            (let ((content (buffer-string)))
+              (expect content :to-match "mount:")
+              (expect content :to-match "debug-mount-test")))
+        (kill-buffer "*test-debug3*"))))
+
+  (it "logs state changes"
+    (setq vui-debug-enabled t)
+    (defcomponent debug-state-test ()
+      :state ((count 0))
+      :render (vui-button "+"
+                :on-click (lambda () (vui-set-state :count (1+ count)))))
+    (let ((instance (vui-mount (vui-component 'debug-state-test) "*test-debug4*")))
+      (unwind-protect
+          (progn
+            ;; Trigger state change
+            (with-current-buffer "*test-debug4*"
+              (widget-apply (widget-at (point-min)) :notify))
+            (with-current-buffer "*vui-debug*"
+              (let ((content (buffer-string)))
+                (expect content :to-match "state-change:")
+                (expect content :to-match ":count"))))
+        (kill-buffer "*test-debug4*"))))
+
+  (it "logs unmount phase"
+    (setq vui-debug-enabled t)
+    (let ((show-child t))
+      (defcomponent debug-unmount-child ()
+        :render (vui-text "child"))
+      (defcomponent debug-unmount-parent ()
+        :render (if show-child
+                    (vui-component 'debug-unmount-child)
+                  (vui-text "no child")))
+      (let ((instance (vui-mount (vui-component 'debug-unmount-parent) "*test-debug5*")))
+        (unwind-protect
+            (progn
+              (setq show-child nil)
+              (vui--rerender-instance instance)
+              (with-current-buffer "*vui-debug*"
+                (let ((content (buffer-string)))
+                  (expect content :to-match "unmount:")
+                  (expect content :to-match "debug-unmount-child"))))
+          (kill-buffer "*test-debug5*")))))
+
+  (it "respects vui-debug-log-phases filter"
+    (setq vui-debug-enabled t)
+    (setq vui-debug-log-phases '(mount))  ; Only log mount
+    (defcomponent debug-filter-test ()
+      :render (vui-text "OK"))
+    (let ((instance (vui-mount (vui-component 'debug-filter-test) "*test-debug6*")))
+      (unwind-protect
+          (with-current-buffer "*vui-debug*"
+            (let ((content (buffer-string)))
+              ;; Should have mount
+              (expect content :to-match "mount:")
+              ;; Should NOT have render
+              (expect content :not :to-match "render:")))
+        (kill-buffer "*test-debug6*")))
+    ;; Reset phases
+    (setq vui-debug-log-phases '(render mount update unmount state-change)))
+
+  (it "clears debug buffer"
+    (setq vui-debug-enabled t)
+    (defcomponent debug-clear-test ()
+      :render (vui-text "OK"))
+    (let ((instance (vui-mount (vui-component 'debug-clear-test) "*test-debug7*")))
+      (unwind-protect
+          (progn
+            (with-current-buffer "*vui-debug*"
+              (expect (buffer-string) :not :to-equal ""))
+            (vui-debug-clear)
+            (with-current-buffer "*vui-debug*"
+              (expect (buffer-string) :to-equal "")))
+        (kill-buffer "*test-debug7*")))))
+
 ;;; vui-test.el ends here

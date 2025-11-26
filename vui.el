@@ -119,6 +119,58 @@ Does nothing if timing is disabled or no timing was started."
   (setq vui--timing-data nil)
   (setq vui--timing-start-time nil))
 
+;;; Render Cycle Debugging
+
+(defcustom vui-debug-enabled nil
+  "When non-nil, log debug information during render cycles.
+Debug output goes to the *vui-debug* buffer."
+  :type 'boolean
+  :group 'vui)
+
+(defcustom vui-debug-log-phases '(render mount update unmount state-change)
+  "List of phases to log when debugging.
+Possible values: render, commit, mount, update, unmount, reconcile, state-change."
+  :type '(repeat symbol)
+  :group 'vui)
+
+(defvar vui--debug-buffer-name "*vui-debug*"
+  "Name of the buffer for debug output.")
+
+(defvar vui--debug-indent 0
+  "Current indentation level for debug output.")
+
+(defun vui--debug-log (phase format-string &rest args)
+  "Log debug message for PHASE with FORMAT-STRING and ARGS.
+Only logs if `vui-debug-enabled' is non-nil and PHASE is in `vui-debug-log-phases'."
+  (when (and vui-debug-enabled (memq phase vui-debug-log-phases))
+    (let ((indent (make-string (* vui--debug-indent 2) ?\s))
+          (timestamp (format-time-string "%H:%M:%S.%3N")))
+      (with-current-buffer (get-buffer-create vui--debug-buffer-name)
+        (goto-char (point-max))
+        (insert (format "[%s] %s%s: %s\n"
+                        timestamp
+                        indent
+                        phase
+                        (apply #'format format-string args)))))))
+
+(defun vui-debug-clear ()
+  "Clear the debug log buffer."
+  (interactive)
+  (when (get-buffer vui--debug-buffer-name)
+    (with-current-buffer vui--debug-buffer-name
+      (let ((inhibit-read-only t))
+        (erase-buffer)))))
+
+(defun vui-debug-show ()
+  "Show the debug log buffer."
+  (interactive)
+  (display-buffer (get-buffer-create vui--debug-buffer-name)))
+
+(defmacro vui--with-debug-indent (&rest body)
+  "Execute BODY with increased debug indentation."
+  `(let ((vui--debug-indent (1+ vui--debug-indent)))
+     ,@body))
+
 (defun vui-report-timing (&optional last-n)
   "Display a timing report for the last LAST-N entries (default all).
 Groups by component and shows total time per phase."
@@ -993,6 +1045,9 @@ Must be called from within a component's event handler."
   (unless vui--current-instance
     (error "vui-set-state called outside of component context"))
   (let ((target (vui--find-state-owner vui--current-instance key)))
+    (vui--debug-log 'state-change "<%s> state %s = %S"
+                    (vui-component-def-name (vui-instance-def target))
+                    key value)
     (setf (vui-instance-state target)
           (plist-put (vui-instance-state target) key value)))
   ;; Schedule re-render (respects batching)
@@ -1566,12 +1621,17 @@ INSTANCE is the component instance."
          ;; Get vtree: either fresh render or cached
          (vtree (if should-render-p
                     (progn
+                      (vui--debug-log 'render "<%s> rendering (first=%s)"
+                                      component-name first-render-p)
                       (vui--timing-start)
-                      (let ((new-vtree (funcall render-fn props state)))
+                      (let ((new-vtree (vui--with-debug-indent
+                                        (funcall render-fn props state))))
                         (vui--timing-record 'render component-name)
                         (setf (vui-instance-cached-vtree instance) new-vtree)
                         new-vtree))
                   ;; Use cached vtree
+                  (vui--debug-log 'render "<%s> skipped (should-update=nil)"
+                                  component-name)
                   (vui-instance-cached-vtree instance))))
     (when vtree
       (vui--timing-start)
@@ -1589,6 +1649,7 @@ INSTANCE is the component instance."
         ;; First render: call on-mount
         (progn
           (setf (vui-instance-mounted-p instance) t)
+          (vui--debug-log 'mount "<%s> mounted" component-name)
           (vui--timing-start)
           (vui--call-lifecycle-hook
            "on-mount"
@@ -1598,6 +1659,7 @@ INSTANCE is the component instance."
           (vui--timing-record 'mount component-name))
       ;; Re-render: call on-update only if we actually rendered
       (when should-render-p
+        (vui--debug-log 'update "<%s> updated" component-name)
         (vui--timing-start)
         (vui--call-lifecycle-hook
          "on-update"
@@ -1613,14 +1675,16 @@ INSTANCE is the component instance."
 (defun vui--call-unmount-recursive (instance)
   "Call on-unmount for INSTANCE and all its children recursively."
   ;; First unmount children (depth-first)
-  (dolist (child (vui-instance-children instance))
-    (vui--call-unmount-recursive child))
+  (vui--with-debug-indent
+   (dolist (child (vui-instance-children instance))
+     (vui--call-unmount-recursive child)))
   ;; Clean up effects
   (vui--cleanup-instance-effects instance)
   ;; Then call on-unmount hook (with error handling)
   (let* ((def (vui-instance-def instance))
          (component-name (vui-component-def-name def))
          (vui--current-instance instance))
+    (vui--debug-log 'unmount "<%s> unmounting" component-name)
     (vui--timing-start)
     (vui--call-lifecycle-hook
      "on-unmount"
