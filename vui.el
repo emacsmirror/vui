@@ -41,6 +41,36 @@
   :group 'tools
   :prefix "vui-")
 
+(defcustom vui-lifecycle-error-handler 'warn
+  "How to handle errors in lifecycle hooks (on-mount, on-update, on-unmount).
+Possible values:
+  `warn'    - Display warning message (default)
+  `message' - Display message in echo area
+  `signal'  - Re-signal the error (let it propagate)
+  `ignore'  - Silently ignore errors
+  function  - Call function with (hook-name error instance)"
+  :type '(choice (const :tag "Display warning" warn)
+                 (const :tag "Display message" message)
+                 (const :tag "Re-signal error" signal)
+                 (const :tag "Ignore silently" ignore)
+                 (function :tag "Custom handler"))
+  :group 'vui)
+
+(defcustom vui-event-error-handler 'warn
+  "How to handle errors in event callbacks (on-click, on-change, etc.).
+Same options as `vui-lifecycle-error-handler'."
+  :type '(choice (const :tag "Display warning" warn)
+                 (const :tag "Display message" message)
+                 (const :tag "Re-signal error" signal)
+                 (const :tag "Ignore silently" ignore)
+                 (function :tag "Custom handler"))
+  :group 'vui)
+
+(defvar vui-last-error nil
+  "The most recent error caught by vui's error handling.
+Stored as (TYPE ERROR CONTEXT) where TYPE is `lifecycle' or `event',
+ERROR is the error object, and CONTEXT is additional information.")
+
 ;;; Core Data Structures - Virtual Nodes
 
 ;; Base structure for all virtual nodes
@@ -172,6 +202,19 @@
   "Runtime binding of a context to a value."
   context           ; The vui-context
   value)            ; Current provided value
+
+;; Error boundary vnode - catches errors in children
+(cl-defstruct (vui-vnode-error-boundary (:include vui-vnode)
+                                        (:constructor vui-vnode-error-boundary--create))
+  "Virtual node that catches errors from children."
+  children          ; Child vnodes to render
+  fallback          ; (lambda (error) vnode) to render on error
+  on-error          ; Optional (lambda (error)) callback when error caught
+  id)               ; Unique identifier for this boundary (for state tracking)
+
+;; Error boundary state (keyed by boundary id)
+(defvar vui--error-boundary-errors (make-hash-table :test 'equal)
+  "Hash table mapping error boundary IDs to caught errors.")
 
 ;;; Component System
 
@@ -549,6 +592,53 @@ Example:
      :rows rows
      :border border
      :key key)))
+
+(defvar vui--error-boundary-counter 0
+  "Counter for generating unique error boundary IDs.")
+
+(cl-defun vui-error-boundary (&key fallback on-error id children)
+  "Create an error boundary that catches errors in CHILDREN.
+
+FALLBACK is a function (lambda (error) vnode) called to render when
+an error is caught. It receives the error object and should return
+a vnode to display.
+
+ON-ERROR is an optional callback (lambda (error)) called when an
+error is caught, useful for logging.
+
+ID is a unique identifier for this boundary. If not provided, one
+is generated automatically. The ID is used to track error state
+across re-renders.
+
+CHILDREN are the vnodes to render normally when no error.
+
+Example:
+  (vui-error-boundary
+    :fallback (lambda (err)
+                (vui-fragment
+                  (vui-text (format \"Error: %s\" (error-message-string err))
+                            :face \\='error)
+                  (vui-newline)
+                  (vui-button \"Retry\"
+                    :on-click (lambda ()
+                                (vui-reset-error-boundary \\='my-boundary)))))
+    :id \\='my-boundary
+    :children (list (my-component)))"
+  (let ((boundary-id (or id (cl-incf vui--error-boundary-counter))))
+    (vui-vnode-error-boundary--create
+     :children children
+     :fallback fallback
+     :on-error on-error
+     :id boundary-id)))
+
+(defun vui-reset-error-boundary (id)
+  "Reset the error state for error boundary with ID.
+This clears the caught error, allowing the boundary to re-render
+its children on the next render cycle."
+  (remhash id vui--error-boundary-errors)
+  ;; Trigger re-render if we have a root instance
+  (when vui--root-instance
+    (vui--rerender-instance vui--root-instance)))
 
 (defun vui-list (items render-fn &optional key-fn)
   "Render a list of ITEMS using RENDER-FN.
@@ -1009,6 +1099,50 @@ Returns (WIDGET-INDEX . DELTA) or (nil . (LINE . COL))."
               (overlay-get ov 'field))
       (delete-overlay ov))))
 
+(defun vui--handle-error (type hook-name err instance)
+  "Handle an error ERR caught in HOOK-NAME.
+TYPE is `lifecycle' or `event'.
+INSTANCE is the component instance where the error occurred."
+  (let* ((handler (if (eq type 'lifecycle)
+                      vui-lifecycle-error-handler
+                    vui-event-error-handler))
+         (component-name (when instance
+                           (vui-component-def-name (vui-instance-def instance))))
+         (context (list :component component-name :hook hook-name))
+         (msg (format "VUI %s error in %s (%s): %s"
+                      type hook-name (or component-name "unknown")
+                      (error-message-string err))))
+    ;; Store for debugging
+    (setq vui-last-error (list type err context))
+    ;; Handle based on configuration
+    (pcase handler
+      ('warn (display-warning 'vui msg :warning))
+      ('message (message "%s" msg))
+      ('signal (signal (car err) (cdr err)))
+      ('ignore nil)
+      ((pred functionp) (funcall handler hook-name err instance)))))
+
+(defun vui--call-lifecycle-hook (hook-name hook-fn instance &rest args)
+  "Call HOOK-FN with ARGS, catching errors according to configuration.
+HOOK-NAME is a string like \"on-mount\" for error messages.
+INSTANCE is the component instance."
+  (when hook-fn
+    (condition-case err
+        (apply hook-fn args)
+      (error
+       (vui--handle-error 'lifecycle hook-name err instance)))))
+
+(defun vui--wrap-event-callback (callback-name callback instance)
+  "Wrap CALLBACK in error handling.
+CALLBACK-NAME is a string like \"on-click\" for error messages.
+INSTANCE is the component instance."
+  (when callback
+    (lambda (&rest args)
+      (condition-case err
+          (apply callback args)
+        (error
+         (vui--handle-error 'event callback-name err instance))))))
+
 (defun vui--render-instance (instance)
   "Render a component INSTANCE into the current buffer."
   (let* ((vui--current-instance instance)
@@ -1036,19 +1170,23 @@ Returns (WIDGET-INDEX . DELTA) or (nil . (LINE . COL))."
         (unless (memq old-child new-children)
           (vui--call-unmount-recursive old-child)))
       (setf (vui-instance-children instance) new-children))
-    ;; Lifecycle hooks
+    ;; Lifecycle hooks (wrapped with error handling)
     (if first-render-p
         ;; First render: call on-mount
         (progn
           (setf (vui-instance-mounted-p instance) t)
-          (let ((on-mount (vui-component-def-on-mount def)))
-            (when on-mount
-              (funcall on-mount props state))))
+          (vui--call-lifecycle-hook
+           "on-mount"
+           (vui-component-def-on-mount def)
+           instance
+           props state))
       ;; Re-render: call on-update with previous values
       ;; Note: prev-props/prev-state may be nil for components with no props/state
-      (let ((on-update (vui-component-def-on-update def)))
-        (when on-update
-          (funcall on-update props state prev-props prev-state))))
+      (vui--call-lifecycle-hook
+       "on-update"
+       (vui-component-def-on-update def)
+       instance
+       props state prev-props prev-state))
     ;; Store current props/state for next render's on-update
     ;; Use copy-tree to deep copy, since plist-put modifies in place
     (setf (vui-instance-prev-props instance) (copy-tree props))
@@ -1061,14 +1199,15 @@ Returns (WIDGET-INDEX . DELTA) or (nil . (LINE . COL))."
     (vui--call-unmount-recursive child))
   ;; Clean up effects
   (vui--cleanup-instance-effects instance)
-  ;; Then call on-unmount hook
+  ;; Then call on-unmount hook (with error handling)
   (let* ((def (vui-instance-def instance))
-         (on-unmount (vui-component-def-on-unmount def)))
-    (when on-unmount
-      (let ((vui--current-instance instance))
-        (funcall on-unmount
-                 (vui-instance-props instance)
-                 (vui-instance-state instance))))))
+         (vui--current-instance instance))
+    (vui--call-lifecycle-hook
+     "on-unmount"
+     (vui-component-def-on-unmount def)
+     instance
+     (vui-instance-props instance)
+     (vui-instance-state instance))))
 
 (defun vui--find-matching-child (parent type key index)
   "Find a child of PARENT matching TYPE and KEY or INDEX."
@@ -1287,13 +1426,15 @@ HEADER-P indicates if this is a header row."
 
    ;; Button
    ((vui-vnode-button-p vnode)
-    (let ((label (vui-vnode-button-label vnode))
-          (on-click (vui-vnode-button-on-click vnode))
-          (face (vui-vnode-button-face vnode))
-          (disabled (vui-vnode-button-disabled-p vnode))
-          ;; Capture instance context for callback
-          (captured-instance vui--current-instance)
-          (captured-root vui--root-instance))
+    (let* ((label (vui-vnode-button-label vnode))
+           (on-click (vui-vnode-button-on-click vnode))
+           (face (vui-vnode-button-face vnode))
+           (disabled (vui-vnode-button-disabled-p vnode))
+           ;; Capture instance context for callback
+           (captured-instance vui--current-instance)
+           (captured-root vui--root-instance)
+           ;; Wrap callback with error handling
+           (wrapped-click (vui--wrap-event-callback "on-click" on-click captured-instance)))
       (if disabled
           ;; Render disabled button as inactive text
           (let ((start (point)))
@@ -1303,47 +1444,51 @@ HEADER-P indicates if this is a header row."
         ;; Render active button using widget
         (apply #'widget-create 'push-button
                :notify (lambda (&rest _)
-                         (when on-click
+                         (when wrapped-click
                            ;; Restore instance context for vui-set-state
                            (let ((vui--current-instance captured-instance)
                                  (vui--root-instance captured-root))
-                             (funcall on-click))))
+                             (funcall wrapped-click))))
                (append
                 (when face (list :button-face face))
                 (list label))))))
 
    ;; Checkbox
    ((vui-vnode-checkbox-p vnode)
-    (let ((checked (vui-vnode-checkbox-checked-p vnode))
-          (on-change (vui-vnode-checkbox-on-change vnode))
-          (label (vui-vnode-checkbox-label vnode))
-          (captured-instance vui--current-instance)
-          (captured-root vui--root-instance))
+    (let* ((checked (vui-vnode-checkbox-checked-p vnode))
+           (on-change (vui-vnode-checkbox-on-change vnode))
+           (label (vui-vnode-checkbox-label vnode))
+           (captured-instance vui--current-instance)
+           (captured-root vui--root-instance)
+           ;; Wrap callback with error handling
+           (wrapped-change (vui--wrap-event-callback "on-change" on-change captured-instance)))
       (widget-create 'checkbox
                      :value checked
                      :notify (lambda (widget &rest _)
-                               (when on-change
+                               (when wrapped-change
                                  (let ((vui--current-instance captured-instance)
                                        (vui--root-instance captured-root))
-                                   (funcall on-change (widget-value widget))))))
+                                   (funcall wrapped-change (widget-value widget))))))
       (when label
         (insert " " label))))
 
    ;; Select (dropdown via completing-read)
    ((vui-vnode-select-p vnode)
-    (let ((value (vui-vnode-select-value vnode))
-          (options (vui-vnode-select-options vnode))
-          (on-change (vui-vnode-select-on-change vnode))
-          (prompt (vui-vnode-select-prompt vnode))
-          (captured-instance vui--current-instance)
-          (captured-root vui--root-instance))
+    (let* ((value (vui-vnode-select-value vnode))
+           (options (vui-vnode-select-options vnode))
+           (on-change (vui-vnode-select-on-change vnode))
+           (prompt (vui-vnode-select-prompt vnode))
+           (captured-instance vui--current-instance)
+           (captured-root vui--root-instance)
+           ;; Wrap callback with error handling
+           (wrapped-change (vui--wrap-event-callback "on-change" on-change captured-instance)))
       (widget-create 'push-button
                      :notify (lambda (&rest _)
                                (let* ((vui--current-instance captured-instance)
                                       (vui--root-instance captured-root)
                                       (choice (completing-read prompt options nil t nil nil value)))
-                                 (when on-change
-                                   (funcall on-change choice))))
+                                 (when wrapped-change
+                                   (funcall wrapped-change choice))))
                      (format "[%s]" (or value "Select...")))))
 
    ;; Horizontal stack
@@ -1436,27 +1581,30 @@ HEADER-P indicates if this is a header row."
 
    ;; Field (editable text input)
    ((vui-vnode-field-p vnode)
-    (let ((value (vui-vnode-field-value vnode))
-          (size (vui-vnode-field-size vnode))
-          (field-key (vui-vnode-field-key vnode))
-          (on-change (vui-vnode-field-on-change vnode))
-          (on-submit (vui-vnode-field-on-submit vnode))
-          ;; Capture instance context for callback
-          (captured-instance vui--current-instance)
-          (captured-root vui--root-instance))
+    (let* ((value (vui-vnode-field-value vnode))
+           (size (vui-vnode-field-size vnode))
+           (field-key (vui-vnode-field-key vnode))
+           (on-change (vui-vnode-field-on-change vnode))
+           (on-submit (vui-vnode-field-on-submit vnode))
+           ;; Capture instance context for callback
+           (captured-instance vui--current-instance)
+           (captured-root vui--root-instance)
+           ;; Wrap callbacks with error handling
+           (wrapped-change (vui--wrap-event-callback "on-change" on-change captured-instance))
+           (wrapped-submit (vui--wrap-event-callback "on-submit" on-submit captured-instance)))
       (let ((w (widget-create 'editable-field
                               :size (or size 20)
                               :value value
                               :notify (lambda (widget &rest _)
-                                        (when on-change
+                                        (when wrapped-change
                                           (let ((vui--current-instance captured-instance)
                                                 (vui--root-instance captured-root))
-                                            (funcall on-change (widget-value widget)))))
+                                            (funcall wrapped-change (widget-value widget)))))
                               :action (lambda (widget &optional _event)
-                                        (when on-submit
+                                        (when wrapped-submit
                                           (let ((vui--current-instance captured-instance)
                                                 (vui--root-instance captured-root))
-                                            (funcall on-submit (widget-value widget))))))))
+                                            (funcall wrapped-submit (widget-value widget))))))))
         ;; Store key on widget for vui-field-value lookup
         (when field-key
           (widget-put w :vui-key field-key)))))
@@ -1482,6 +1630,34 @@ HEADER-P indicates if this is a header row."
       ;; Render all children with the new context
       (dolist (child children)
         (vui--render-vnode child))))
+
+   ;; Error boundary - catch errors from children
+   ((vui-vnode-error-boundary-p vnode)
+    (let* ((boundary-id (vui-vnode-error-boundary-id vnode))
+           (fallback (vui-vnode-error-boundary-fallback vnode))
+           (on-error (vui-vnode-error-boundary-on-error vnode))
+           (children (vui-vnode-error-boundary-children vnode))
+           ;; Check if we already have a caught error for this boundary
+           (existing-error (gethash boundary-id vui--error-boundary-errors)))
+      (if existing-error
+          ;; Already have an error - render fallback
+          (when fallback
+            (let ((fallback-vnode (funcall fallback existing-error)))
+              (vui--render-vnode fallback-vnode)))
+        ;; No error yet - try to render children
+        (condition-case err
+            (dolist (child children)
+              (vui--render-vnode child))
+          (error
+           ;; Store the error for this boundary
+           (puthash boundary-id err vui--error-boundary-errors)
+           ;; Call on-error callback if provided
+           (when on-error
+             (funcall on-error err))
+           ;; Render fallback
+           (when fallback
+             (let ((fallback-vnode (funcall fallback err)))
+               (vui--render-vnode fallback-vnode))))))))
 
    ;; String shorthand
    ((stringp vnode)
