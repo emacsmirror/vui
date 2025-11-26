@@ -92,6 +92,113 @@
   on-change
   face)
 
+;; Component reference in vtree
+(cl-defstruct (vui-vnode-component (:include vui-vnode)
+                                   (:constructor vui-vnode-component--create))
+  "Virtual node representing a component instantiation."
+  type       ; Symbol - the component type name
+  props      ; Plist of props to pass
+  children)  ; List of child vnodes (passed as :children prop)
+
+;;; Component System
+
+;; Component definition - the template
+(cl-defstruct (vui-component-def (:constructor vui-component-def--create))
+  "Definition of a component type."
+  name              ; Symbol identifying this component type
+  props-spec        ; List of prop names (symbols)
+  initial-state-fn  ; (lambda (props) state) or nil
+  render-fn)        ; (lambda (props state) vnode)
+
+;; Component instance - a live component
+(cl-defstruct (vui-instance (:constructor vui-instance--create))
+  "A live instance of a component in the tree."
+  id          ; Unique identifier
+  def         ; Reference to vui-component-def
+  props       ; Current props plist
+  state       ; Current state plist (mutable)
+  vnode       ; The vui-vnode-component that created this
+  parent      ; Parent vui-instance or nil for root
+  children    ; Child vui-instances
+  buffer      ; Buffer this instance is rendered into
+  mounted-p)  ; Has this been mounted?
+
+;; Registry of component definitions
+(defvar vui--component-registry (make-hash-table :test 'eq)
+  "Hash table mapping component names to definitions.")
+
+;; Current render context
+(defvar vui--current-instance nil
+  "The component instance currently being rendered.")
+
+(defvar vui--instance-counter 0
+  "Counter for generating unique instance IDs.")
+
+(defun vui--register-component (def)
+  "Register component definition DEF in the registry."
+  (puthash (vui-component-def-name def) def vui--component-registry))
+
+(defun vui--get-component (name)
+  "Get component definition by NAME."
+  (or (gethash name vui--component-registry)
+      (error "Unknown component: %s" name)))
+
+(defmacro defcomponent (name args &rest body)
+  "Define a component named NAME.
+
+ARGS is a list of prop names the component accepts.
+BODY contains keyword sections:
+  :state ((var initial) ...) - local state variables
+  :render FORM - the render expression (required)
+
+The render expression has access to all props as variables,
+plus state variables, plus `children' for nested content.
+
+Example:
+  (defcomponent greeting (name)
+    :state ((count 0))
+    :render
+    (vui-fragment
+      (vui-text (format \"Hello, %s! Count: %d\" name count))
+      (vui-button \"+\" :on-click (lambda () (vui-set-state \\='count (1+ count))))))"
+  (declare (indent 2))
+  (let ((state-spec nil)
+        (render-form nil)
+        (rest body))
+    ;; Parse keyword arguments
+    (while rest
+      (pcase (car rest)
+        (:state (setq state-spec (cadr rest)
+                      rest (cddr rest)))
+        (:render (setq render-form (cadr rest)
+                       rest (cddr rest)))
+        (_ (error "Unknown defcomponent keyword: %s" (car rest)))))
+    (unless render-form
+      (error "defcomponent %s: :render is required" name))
+    (let ((state-vars (mapcar #'car state-spec))
+          (state-inits (mapcar #'cadr state-spec)))
+      `(progn
+         (vui--register-component
+          (vui-component-def--create
+           :name ',name
+           :props-spec ',args
+           :initial-state-fn ,(if state-spec
+                                  `(lambda (_props)
+                                     (list ,@(cl-mapcan (lambda (var init)
+                                                          (list (intern (format ":%s" var)) init))
+                                                        state-vars state-inits)))
+                                nil)
+           :render-fn (lambda (--props-- --state--)
+                        (let (,@(mapcar (lambda (arg)
+                                          `(,arg (plist-get --props-- ,(intern (format ":%s" arg)))))
+                                        args)
+                              ,@(mapcar (lambda (var)
+                                          `(,var (plist-get --state-- ,(intern (format ":%s" var)))))
+                                        state-vars)
+                              (children (plist-get --props-- :children)))
+                          ,render-form))))
+         ',name))))
+
 ;;; Constructor Functions
 
 (defun vui-text (content &rest props)
@@ -137,6 +244,89 @@ PROPS is a plist accepting :size, :placeholder, :on-change, :face, :key."
    :on-change (plist-get props :on-change)
    :face (plist-get props :face)
    :key (plist-get props :key)))
+
+(defun vui-component (type &rest props-and-children)
+  "Create a component vnode of TYPE with PROPS-AND-CHILDREN.
+TYPE is a symbol naming a defined component.
+PROPS-AND-CHILDREN is a plist of props, optionally ending with :children."
+  (let ((props nil)
+        (children nil)
+        (rest props-and-children))
+    ;; Parse props and children
+    (while rest
+      (if (eq (car rest) :children)
+          (setq children (cadr rest)
+                rest nil)
+        (setq props (append props (list (car rest) (cadr rest)))
+              rest (cddr rest))))
+    (vui-vnode-component--create
+     :type type
+     :props props
+     :children children
+     :key (plist-get props :key))))
+
+;;; State Management
+
+(defvar vui--root-instance nil
+  "The root component instance for the current buffer.")
+
+(defun vui-set-state (key value)
+  "Set state KEY to VALUE in the current component and re-render.
+Must be called from within a component's event handler."
+  (unless vui--current-instance
+    (error "vui-set-state called outside of component context"))
+  (setf (vui-instance-state vui--current-instance)
+        (plist-put (vui-instance-state vui--current-instance) key value))
+  ;; Re-render from the root
+  (when vui--root-instance
+    (vui--rerender-instance vui--root-instance)))
+
+(defun vui--rerender-instance (instance)
+  "Re-render INSTANCE and update the buffer."
+  (let ((buffer (vui-instance-buffer instance)))
+    (when (and buffer (buffer-live-p buffer))
+      (with-current-buffer buffer
+        (let ((inhibit-read-only t)
+              (vui--root-instance instance))
+          (remove-overlays)
+          (erase-buffer)
+          (vui--render-instance instance)
+          (widget-setup)
+          (use-local-map widget-keymap)
+          (goto-char (point-min)))))))
+
+(defun vui--render-instance (instance)
+  "Render a component INSTANCE into the current buffer."
+  (let* ((vui--current-instance instance)
+         (def (vui-instance-def instance))
+         (render-fn (vui-component-def-render-fn def))
+         (props (vui-instance-props instance))
+         (state (vui-instance-state instance))
+         (vtree (funcall render-fn props state)))
+    (vui--render-vnode vtree)))
+
+(defun vui--instantiate-component (vnode &optional parent)
+  "Create an instance from a component VNODE with optional PARENT."
+  (let* ((type (vui-vnode-component-type vnode))
+         (def (vui--get-component type))
+         (props (vui-vnode-component-props vnode))
+         (children (vui-vnode-component-children vnode))
+         (props-with-children (if children
+                                  (plist-put (copy-sequence props) :children children)
+                                props))
+         (initial-state-fn (vui-component-def-initial-state-fn def))
+         (initial-state (if initial-state-fn
+                            (funcall initial-state-fn props-with-children)
+                          nil)))
+    (vui-instance--create
+     :id (cl-incf vui--instance-counter)
+     :def def
+     :props props-with-children
+     :state initial-state
+     :vnode vnode
+     :parent parent
+     :children nil
+     :mounted-p nil)))
 
 ;;; Rendering
 
@@ -206,6 +396,11 @@ PROPS is a plist accepting :size, :placeholder, :on-change, :face, :key."
                                (when on-change
                                  (funcall on-change (widget-value widget)))))))
 
+   ;; Component - instantiate and render
+   ((vui-vnode-component-p vnode)
+    (let ((instance (vui--instantiate-component vnode vui--current-instance)))
+      (vui--render-instance instance)))
+
    ;; String shorthand
    ((stringp vnode)
     (insert vnode))
@@ -244,66 +439,77 @@ Creates the buffer if it doesn't exist, switches to it."
     (switch-to-buffer buf)
     buf))
 
+(defun vui-mount (component-vnode &optional buffer-name)
+  "Mount a component as root and render to BUFFER-NAME.
+COMPONENT-VNODE should be created with `vui-component'.
+BUFFER-NAME defaults to \"*vui*\".
+Returns the root instance."
+  (let* ((buf-name (or buffer-name "*vui*"))
+         (buf (get-buffer-create buf-name))
+         (instance (vui--instantiate-component component-vnode nil)))
+    ;; Store buffer reference in instance for re-rendering
+    (setf (vui-instance-buffer instance) buf)
+    (with-current-buffer buf
+      (let ((inhibit-read-only t))
+        (kill-all-local-variables)
+        (remove-overlays)
+        (erase-buffer)
+        ;; Store root instance for state updates
+        (setq-local vui--root-instance instance)
+        (let ((vui--root-instance instance))
+          (vui--render-instance instance))
+        (widget-setup)
+        (use-local-map widget-keymap)
+        (goto-char (point-min))))
+    (switch-to-buffer buf)
+    instance))
+
 ;;; Demo
 
-(defvar vui-demo--counter 0
-  "Counter for the demo.")
+;; A counter component with local state
+(defcomponent vui-demo-counter ()
+  :state ((count 0))
+  :render
+  (vui-fragment
+   (vui-text "Counter: " :face 'font-lock-function-name-face)
+   (vui-text (number-to-string count) :face 'bold)
+   (vui-newline)
+   (vui-newline)
+   (vui-button "  +  "
+               :on-click (lambda ()
+                           (vui-set-state :count (1+ count))))
+   (vui-space 2)
+   (vui-button "  -  "
+               :on-click (lambda ()
+                           (vui-set-state :count (1- count))))
+   (vui-space 2)
+   (vui-button "Reset"
+               :on-click (lambda ()
+                           (vui-set-state :count 0)))))
 
-(defvar vui-demo--name ""
-  "Name for the demo greeting.")
-
-(defun vui-demo--render ()
-  "Render the demo UI."
+;; Main demo app component
+(defcomponent vui-demo-app ()
+  :render
   (vui-fragment
    (vui-text "Welcome to " :face 'font-lock-keyword-face)
    (vui-text "vui.el" :face 'bold)
    (vui-text "!" :face 'font-lock-keyword-face)
    (vui-newline)
    (vui-newline)
-   ;; Greeting section
-   (vui-text "Your name: " :face 'font-lock-function-name-face)
-   (vui-field vui-demo--name
-              :size 15
-              :placeholder "Enter name"
-              :on-change (lambda (value)
-                           (setq vui-demo--name value)))
-   (vui-space 2)
-   (vui-button "Greet"
-               :on-click (lambda ()
-                           (message "Hello, %s!"
-                                    (if (string-empty-p vui-demo--name)
-                                        "stranger"
-                                      vui-demo--name))))
+   (vui-text "A declarative, component-based UI library." :face 'font-lock-doc-face)
    (vui-newline)
    (vui-newline)
-   ;; Counter section
-   (vui-text "Counter: " :face 'font-lock-function-name-face)
-   (vui-text (number-to-string vui-demo--counter) :face 'bold)
+   ;; Nested stateful counter component
+   (vui-component 'vui-demo-counter)
    (vui-newline)
    (vui-newline)
-   (vui-button "  +  "
-               :on-click (lambda ()
-                           (cl-incf vui-demo--counter)
-                           (vui-demo)))
-   (vui-space 2)
-   (vui-button "  -  "
-               :on-click (lambda ()
-                           (cl-decf vui-demo--counter)
-                           (vui-demo)))
-   (vui-space 2)
-   (vui-button "Reset"
-               :on-click (lambda ()
-                           (setq vui-demo--counter 0)
-                           (vui-demo)))
-   (vui-newline)
-   (vui-newline)
-   (vui-text "TAB: navigate | RET: activate | Type in field to edit"
-             :face 'font-lock-comment-face)))
+   (vui-text "TAB: navigate | RET: activate" :face 'font-lock-comment-face)))
 
 (defun vui-demo ()
-  "Show a demo of vui.el rendering capabilities."
+  "Show a demo of vui.el rendering capabilities.
+Uses a stateful component with vui-mount."
   (interactive)
-  (vui-render-to-buffer "*vui-demo*" (vui-demo--render)))
+  (vui-mount (vui-component 'vui-demo-app) "*vui-demo*"))
 
 (provide 'vui)
 ;;; vui.el ends here

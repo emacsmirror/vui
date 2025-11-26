@@ -180,4 +180,75 @@
           (widget-apply widget :notify widget))
         (expect new-value :to-equal "changed")))))
 
+(describe "defcomponent"
+  (it "defines a component and registers it"
+    (defcomponent test-simple ()
+      :render (vui-text "simple"))
+    (expect (vui--get-component 'test-simple) :to-be-truthy))
+
+  (it "defines component with props"
+    (defcomponent test-greeting (name)
+      :render (vui-text (format "Hello, %s!" name)))
+    (let ((def (vui--get-component 'test-greeting)))
+      (expect (vui-component-def-props-spec def) :to-equal '(name))))
+
+  (it "defines component with state"
+    (defcomponent test-counter ()
+      :state ((count 0))
+      :render (vui-text (number-to-string count)))
+    (let ((def (vui--get-component 'test-counter)))
+      (expect (vui-component-def-initial-state-fn def) :to-be-truthy))))
+
+(describe "vui-component"
+  (it "creates a component vnode"
+    (let ((vnode (vui-component 'test-simple)))
+      (expect (vui-vnode-component-p vnode) :to-be-truthy)
+      (expect (vui-vnode-component-type vnode) :to-equal 'test-simple)))
+
+  (it "accepts props"
+    (let ((vnode (vui-component 'test-greeting :name "World")))
+      (expect (plist-get (vui-vnode-component-props vnode) :name)
+              :to-equal "World")))
+
+  (it "accepts children"
+    (let ((vnode (vui-component 'some-comp :children (list (vui-text "child")))))
+      (expect (vui-vnode-component-children vnode) :to-be-truthy))))
+
+(describe "component rendering"
+  (it "renders a simple component"
+    (defcomponent render-test ()
+      :render (vui-text "rendered!"))
+    (with-temp-buffer
+      (vui-render (vui-component 'render-test))
+      (expect (buffer-string) :to-equal "rendered!")))
+
+  (it "renders component with props"
+    (defcomponent greeting-test (name)
+      :render (vui-text (format "Hi, %s!" name)))
+    (with-temp-buffer
+      (vui-render (vui-component 'greeting-test :name "Alice"))
+      (expect (buffer-string) :to-equal "Hi, Alice!")))
+
+  (it "renders nested components"
+    (defcomponent inner-comp ()
+      :render (vui-text "[inner]"))
+    (defcomponent outer-comp ()
+      :render (vui-fragment
+               (vui-text "outer:")
+               (vui-component 'inner-comp)))
+    (with-temp-buffer
+      (vui-render (vui-component 'outer-comp))
+      (expect (buffer-string) :to-equal "outer:[inner]")))
+
+  (it "passes children to component"
+    (defcomponent wrapper-comp ()
+      :render (vui-fragment
+               (vui-text "[")
+               (vui-vnode-fragment--create :children children)
+               (vui-text "]")))
+    (with-temp-buffer
+      (vui-render (vui-component 'wrapper-comp
+                                 :children (list (vui-text "content"))))
+      (expect (buffer-string) :to-equal "[content]"))))
+
 ;;; vui-test.el ends here
