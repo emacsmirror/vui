@@ -110,20 +110,22 @@
                            (vui-set-state :done (not done))))
    (vui-text text :face (when done 'shadow))))
 
+(defcomponent todo-items-demo ()
+  :render
+  (vui-fragment
+   (vui-text "Todo Items (click to toggle):")
+   (vui-newline)
+   (vui-newline)
+   (vui-component 'todo-item-example :text "Learn vui.el basics")
+   (vui-newline)
+   (vui-component 'todo-item-example :text "Build a simple app")
+   (vui-newline)
+   (vui-component 'todo-item-example :text "Read the documentation")))
+
 (defun vui-example-todo-item ()
   "Run the Todo Item example (exercise solution)."
   (interactive)
-  (vui-mount
-   (vui-fragment
-    (vui-text "Todo Items (click to toggle):")
-    (vui-newline)
-    (vui-newline)
-    (vui-component 'todo-item-example :text "Learn vui.el basics")
-    (vui-newline)
-    (vui-component 'todo-item-example :text "Build a simple app")
-    (vui-newline)
-    (vui-component 'todo-item-example :text "Read the documentation"))
-   "*vui-todo-items*"))
+  (vui-mount (vui-component 'todo-items-demo) "*vui-todo-items*"))
 
 
 ;;; Run All Examples
