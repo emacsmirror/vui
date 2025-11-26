@@ -93,6 +93,88 @@
     (let ((node (vui-field "" :key "field-1")))
       (expect (vui-vnode-key node) :to-equal "field-1"))))
 
+(describe "vui-hstack"
+  (it "creates an hstack vnode"
+    (let ((node (vui-hstack (vui-text "a") (vui-text "b"))))
+      (expect (vui-vnode-hstack-p node) :to-be-truthy)
+      (expect (length (vui-vnode-hstack-children node)) :to-equal 2)))
+
+  (it "defaults spacing to 1"
+    (let ((node (vui-hstack (vui-text "a"))))
+      (expect (vui-vnode-hstack-spacing node) :to-equal 1)))
+
+  (it "accepts custom spacing"
+    (let ((node (vui-hstack :spacing 3 (vui-text "a"))))
+      (expect (vui-vnode-hstack-spacing node) :to-equal 3)))
+
+  (it "renders children horizontally with spacing"
+    (with-temp-buffer
+      (vui-render (vui-hstack (vui-text "a") (vui-text "b") (vui-text "c")))
+      (expect (buffer-string) :to-equal "a b c")))
+
+  (it "renders with custom spacing"
+    (with-temp-buffer
+      (vui-render (vui-hstack :spacing 3 (vui-text "a") (vui-text "b")))
+      (expect (buffer-string) :to-equal "a   b")))
+
+  (it "renders with zero spacing"
+    (with-temp-buffer
+      (vui-render (vui-hstack :spacing 0 (vui-text "a") (vui-text "b")))
+      (expect (buffer-string) :to-equal "ab"))))
+
+(describe "vui-vstack"
+  (it "creates a vstack vnode"
+    (let ((node (vui-vstack (vui-text "a") (vui-text "b"))))
+      (expect (vui-vnode-vstack-p node) :to-be-truthy)
+      (expect (length (vui-vnode-vstack-children node)) :to-equal 2)))
+
+  (it "defaults spacing to 0 and indent to 0"
+    (let ((node (vui-vstack (vui-text "a"))))
+      (expect (vui-vnode-vstack-spacing node) :to-equal 0)
+      (expect (vui-vnode-vstack-indent node) :to-equal 0)))
+
+  (it "renders children vertically"
+    (with-temp-buffer
+      (vui-render (vui-vstack (vui-text "line1") (vui-text "line2")))
+      (expect (buffer-string) :to-equal "line1\nline2")))
+
+  (it "renders with spacing (blank lines)"
+    (with-temp-buffer
+      (vui-render (vui-vstack :spacing 1 (vui-text "a") (vui-text "b")))
+      (expect (buffer-string) :to-equal "a\n\nb")))
+
+  (it "renders with indent"
+    (with-temp-buffer
+      (vui-render (vui-vstack :indent 2 (vui-text "a") (vui-text "b")))
+      (expect (buffer-string) :to-equal "  a\n  b"))))
+
+(describe "vui-box"
+  (it "creates a box vnode"
+    (let ((node (vui-box (vui-text "hi") :width 10)))
+      (expect (vui-vnode-box-p node) :to-be-truthy)
+      (expect (vui-vnode-box-width node) :to-equal 10)))
+
+  (it "renders with left alignment (default)"
+    (with-temp-buffer
+      (vui-render (vui-box (vui-text "hi") :width 10))
+      (expect (buffer-string) :to-equal "hi        ")))
+
+  (it "renders with right alignment"
+    (with-temp-buffer
+      (vui-render (vui-box (vui-text "hi") :width 10 :align :right))
+      (expect (buffer-string) :to-equal "        hi")))
+
+  (it "renders with center alignment"
+    (with-temp-buffer
+      (vui-render (vui-box (vui-text "hi") :width 10 :align :center))
+      (expect (buffer-string) :to-equal "    hi    ")))
+
+  (it "renders with padding"
+    (with-temp-buffer
+      (vui-render (vui-box (vui-text "x") :width 10 :padding-left 2 :padding-right 2))
+      ;; width=10, padding=2+2, inner=6, content=1, fill=5
+      (expect (buffer-string) :to-equal "  x       "))))
+
 (describe "vui-render"
   (it "renders text to buffer"
     (with-temp-buffer

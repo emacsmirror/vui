@@ -92,6 +92,31 @@
   on-change
   face)
 
+;; Layout: horizontal stack
+(cl-defstruct (vui-vnode-hstack (:include vui-vnode)
+                                (:constructor vui-vnode-hstack--create))
+  "Horizontal layout container."
+  children   ; List of child vnodes
+  spacing)   ; Spaces between children (default 1)
+
+;; Layout: vertical stack
+(cl-defstruct (vui-vnode-vstack (:include vui-vnode)
+                                (:constructor vui-vnode-vstack--create))
+  "Vertical layout container."
+  children   ; List of child vnodes
+  spacing    ; Blank lines between children (default 0)
+  indent)    ; Left indent for all children (default 0)
+
+;; Layout: fixed-width box
+(cl-defstruct (vui-vnode-box (:include vui-vnode)
+                             (:constructor vui-vnode-box--create))
+  "Fixed-width container with alignment."
+  child      ; Single child vnode
+  width      ; Width in characters
+  align      ; :left, :center, :right
+  padding-left
+  padding-right)
+
 ;; Component reference in vtree
 (cl-defstruct (vui-vnode-component (:include vui-vnode)
                                    (:constructor vui-vnode-component--create))
@@ -265,6 +290,73 @@ PROPS is a plist accepting :size, :placeholder, :on-change, :face, :key."
    :placeholder (plist-get props :placeholder)
    :on-change (plist-get props :on-change)
    :face (plist-get props :face)
+   :key (plist-get props :key)))
+
+(defun vui-hstack (&rest args)
+  "Create a horizontal stack layout.
+ARGS can start with keyword options, followed by children.
+Options: :spacing N (spaces between children, default 1)
+         :key KEY (for reconciliation)
+
+Usage: (vui-hstack child1 child2 child3)
+       (vui-hstack :spacing 2 child1 child2)"
+  (let ((spacing 1)
+        (key nil)
+        (children nil))
+    ;; Parse keyword arguments
+    (while (and args (keywordp (car args)))
+      (pcase (pop args)
+        (:spacing (setq spacing (pop args)))
+        (:key (setq key (pop args)))))
+    ;; Remaining args are children
+    (setq children (remq nil (flatten-list args)))
+    (vui-vnode-hstack--create
+     :children children
+     :spacing spacing
+     :key key)))
+
+(defun vui-vstack (&rest args)
+  "Create a vertical stack layout.
+ARGS can start with keyword options, followed by children.
+Options: :spacing N (blank lines between children, default 0)
+         :indent N (left indent in spaces, default 0)
+         :key KEY (for reconciliation)
+
+Usage: (vui-vstack child1 child2 child3)
+       (vui-vstack :spacing 1 child1 child2)
+       (vui-vstack :indent 2 child1 child2)"
+  (let ((spacing 0)
+        (indent 0)
+        (key nil)
+        (children nil))
+    (while (and args (keywordp (car args)))
+      (pcase (pop args)
+        (:spacing (setq spacing (pop args)))
+        (:indent (setq indent (pop args)))
+        (:key (setq key (pop args)))))
+    (setq children (remq nil (flatten-list args)))
+    (vui-vnode-vstack--create
+     :children children
+     :spacing spacing
+     :indent indent
+     :key key)))
+
+(defun vui-box (child &rest props)
+  "Create a fixed-width box containing CHILD.
+PROPS is a plist accepting:
+  :width N - width in characters (default 20)
+  :align ALIGN - :left, :center, or :right (default :left)
+  :padding-left N - left padding (default 0)
+  :padding-right N - right padding (default 0)
+  :key KEY - for reconciliation
+
+Usage: (vui-box (vui-text \"hello\") :width 20 :align :center)"
+  (vui-vnode-box--create
+   :child child
+   :width (or (plist-get props :width) 20)
+   :align (or (plist-get props :align) :left)
+   :padding-left (or (plist-get props :padding-left) 0)
+   :padding-right (or (plist-get props :padding-right) 0)
    :key (plist-get props :key)))
 
 (defun vui-component (type &rest props-and-children)
@@ -485,6 +577,68 @@ Must be called from within a component's event handler."
                 (when face (list :button-face face))
                 (list label))))))
 
+   ;; Horizontal stack
+   ((vui-vnode-hstack-p vnode)
+    (let ((spacing (or (vui-vnode-hstack-spacing vnode) 1))
+          (children (vui-vnode-hstack-children vnode))
+          (space-str nil)
+          (first t))
+      (setq space-str (make-string spacing ?\s))
+      (dolist (child children)
+        (unless first
+          (insert space-str))
+        (vui--render-vnode child)
+        (setq first nil))))
+
+   ;; Vertical stack
+   ((vui-vnode-vstack-p vnode)
+    (let ((spacing (or (vui-vnode-vstack-spacing vnode) 0))
+          (indent (or (vui-vnode-vstack-indent vnode) 0))
+          (children (vui-vnode-vstack-children vnode))
+          (indent-str nil)
+          (first t))
+      (setq indent-str (make-string indent ?\s))
+      (dolist (child children)
+        (unless first
+          (insert "\n")
+          (dotimes (_ spacing) (insert "\n")))
+        (insert indent-str)
+        (vui--render-vnode child)
+        (setq first nil))))
+
+   ;; Fixed-width box
+   ((vui-vnode-box-p vnode)
+    (let* ((width (vui-vnode-box-width vnode))
+           (align (or (vui-vnode-box-align vnode) :left))
+           (pad-left (or (vui-vnode-box-padding-left vnode) 0))
+           (pad-right (or (vui-vnode-box-padding-right vnode) 0))
+           (child (vui-vnode-box-child vnode))
+           ;; Render child to string to measure
+           (content (with-temp-buffer
+                      (vui--render-vnode child)
+                      (buffer-string)))
+           (content-width (string-width content))
+           (inner-width (- width pad-left pad-right))
+           (padding (max 0 (- inner-width content-width))))
+      ;; Insert left padding
+      (insert (make-string pad-left ?\s))
+      ;; Insert content with alignment
+      (pcase align
+        (:left
+         (insert content)
+         (insert (make-string padding ?\s)))
+        (:right
+         (insert (make-string padding ?\s))
+         (insert content))
+        (:center
+         (let ((left-pad (/ padding 2))
+               (right-pad (- padding (/ padding 2))))
+           (insert (make-string left-pad ?\s))
+           (insert content)
+           (insert (make-string right-pad ?\s)))))
+      ;; Insert right padding
+      (insert (make-string pad-right ?\s))))
+
    ;; Field (editable text input)
    ((vui-vnode-field-p vnode)
     (let ((value (vui-vnode-field-value vnode))
@@ -593,28 +747,26 @@ Returns the root instance."
                :on-click (lambda ()
                            (vui-set-state :count 0)))))
 
-;; Main demo app - demonstrates nested stateful components
+;; Main demo app - demonstrates nested stateful components and layouts
 (defcomponent vui-demo-app ()
   :render
-  (vui-fragment
-   (vui-text "Welcome to " :face 'font-lock-keyword-face)
-   (vui-text "vui.el" :face 'bold)
-   (vui-text "!" :face 'font-lock-keyword-face)
-   (vui-newline)
-   (vui-newline)
+  (vui-vstack
+   :spacing 1
+   ;; Header
+   (vui-hstack :spacing 0
+               (vui-text "Welcome to " :face 'font-lock-keyword-face)
+               (vui-text "vui.el" :face 'bold)
+               (vui-text "!" :face 'font-lock-keyword-face))
    (vui-text "A declarative, component-based UI library." :face 'font-lock-doc-face)
-   (vui-newline)
-   (vui-newline)
    ;; Two independent counter components - each maintains its own state!
-   (vui-component 'vui-counter :label "Apples")
-   (vui-newline)
-   (vui-component 'vui-counter :label "Oranges")
-   (vui-newline)
-   (vui-newline)
-   (vui-text "Each counter has independent state (reconciliation!)"
-             :face 'font-lock-comment-face)
-   (vui-newline)
-   (vui-text "TAB: navigate | RET: activate" :face 'font-lock-comment-face)))
+   (vui-vstack
+    (vui-component 'vui-counter :label "Apples")
+    (vui-component 'vui-counter :label "Oranges"))
+   ;; Footer
+   (vui-vstack
+    (vui-text "Each counter has independent state (reconciliation!)"
+              :face 'font-lock-comment-face)
+    (vui-text "TAB: navigate | RET: activate" :face 'font-lock-comment-face))))
 
 (defun vui-demo ()
   "Show a demo of vui.el rendering capabilities.
@@ -679,6 +831,48 @@ Uses a stateful component with vui-mount."
 Demonstrates on-mount and on-unmount callbacks."
   (interactive)
   (vui-mount (vui-component 'vui-lifecycle-demo) "*vui-lifecycle-demo*"))
+
+;; Layout demo
+(defcomponent vui-layout-demo ()
+  :render
+  (vui-vstack
+   :spacing 1
+   (vui-text "Layout Primitives Demo" :face 'bold)
+
+   ;; hstack demo
+   (vui-vstack
+    (vui-text "vui-hstack (horizontal):" :face 'font-lock-function-name-face)
+    (vui-hstack (vui-text "[A]") (vui-text "[B]") (vui-text "[C]"))
+    (vui-hstack :spacing 3 (vui-text "[wide") (vui-text "spacing]")))
+
+   ;; vstack demo
+   (vui-vstack
+    (vui-text "vui-vstack (vertical with indent):" :face 'font-lock-function-name-face)
+    (vui-vstack :indent 4
+                (vui-text "indented line 1")
+                (vui-text "indented line 2")))
+
+   ;; box demo
+   (vui-vstack
+    (vui-text "vui-box (fixed width + alignment):" :face 'font-lock-function-name-face)
+    (vui-hstack :spacing 0
+                (vui-text "|")
+                (vui-box (vui-text "left") :width 15 :align :left)
+                (vui-text "|"))
+    (vui-hstack :spacing 0
+                (vui-text "|")
+                (vui-box (vui-text "center") :width 15 :align :center)
+                (vui-text "|"))
+    (vui-hstack :spacing 0
+                (vui-text "|")
+                (vui-box (vui-text "right") :width 15 :align :right)
+                (vui-text "|")))))
+
+(defun vui-layout-demo ()
+  "Show a demo of layout primitives.
+Demonstrates vui-hstack, vui-vstack, and vui-box."
+  (interactive)
+  (vui-mount (vui-component 'vui-layout-demo) "*vui-layout-demo*"))
 
 (provide 'vui)
 ;;; vui.el ends here
