@@ -2150,18 +2150,25 @@ Handles :truncate and overflow:
           (indent (or (vui-vnode-vstack-indent vnode) 0))
           (children (vui-vnode-vstack-children vnode))
           (indent-str nil)
-          (first t))
+          (first t)
+          (prev-ended-newline nil))
       (setq indent-str (make-string indent ?\s))
       (dolist (child children)
         ;; Add separator newline unless:
         ;; - This is the first child
         ;; - This child is a vui-newline (it provides its own line break)
-        (unless (or first (vui-vnode-newline-p child))
+        ;; - Previous child ended with newline (e.g., table with border)
+        (unless (or first (vui-vnode-newline-p child) prev-ended-newline)
           (insert "\n")
           (dotimes (_ spacing) (insert "\n")))
         (unless (vui-vnode-newline-p child)
           (insert indent-str))
         (vui--render-vnode child)
+        ;; Track if this child ended with a newline (for block elements like tables)
+        ;; Don't track for vui-newline since it has explicit handling
+        (setq prev-ended-newline (and (not (vui-vnode-newline-p child))
+                                      (> (point) (point-min))
+                                      (eq (char-before) ?\n)))
         (setq first nil))))
 
    ;; Fixed-width box

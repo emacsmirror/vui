@@ -205,7 +205,26 @@ Buttons are now rendered as text with keymap, so we invoke the RET binding."
   (it "renders with indent"
     (with-temp-buffer
       (vui-render (vui-vstack :indent 2 (vui-text "a") (vui-text "b")))
-      (expect (buffer-string) :to-equal "  a\n  b"))))
+      (expect (buffer-string) :to-equal "  a\n  b")))
+
+  (it "renders vui-newline as one blank line"
+    (with-temp-buffer
+      (vui-render (vui-vstack
+                   (vui-text "header")
+                   (vui-newline)
+                   (vui-text "content")))
+      (expect (buffer-string) :to-equal "header\n\ncontent")))
+
+  (it "does not add extra blank line after table"
+    (with-temp-buffer
+      (vui-render (vui-vstack
+                   (vui-table
+                    :columns '((:header "Name" :width 4 :grow t))
+                    :rows '(("Al"))
+                    :border :ascii)
+                   (vui-text "after")))
+      ;; Table ends with newline, vstack should not add another
+      (expect (buffer-string) :to-match "\\+------\\+\nafter$"))))
 
 (describe "vui-box"
   (it "creates a box vnode"
