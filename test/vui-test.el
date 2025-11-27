@@ -45,7 +45,13 @@ Buttons are now rendered as text with keymap, so we invoke the RET binding."
 (describe "vui-newline"
   (it "creates a newline vnode"
     (let ((node (vui-newline)))
-      (expect (vui-vnode-newline-p node) :to-be-truthy))))
+      (expect (vui-vnode-newline-p node) :to-be-truthy)))
+
+  ;; Standalone rendering
+  (it "renders as newline when standalone"
+    (with-temp-buffer
+      (vui-render (vui-newline))
+      (expect (buffer-string) :to-equal "\n"))))
 
 (describe "vui-space"
   (it "creates a space vnode with default width"
@@ -182,6 +188,9 @@ Buttons are now rendered as text with keymap, so we invoke the RET binding."
       (expect (buffer-string) :to-equal "ab"))))
 
 (describe "vui-vstack"
+  ;; Specification: vstack joins children with \n
+  ;; newline children render as empty string, adding extra \n via join
+
   (it "creates a vstack vnode"
     (let ((node (vui-vstack (vui-text "a") (vui-text "b"))))
       (expect (vui-vnode-vstack-p node) :to-be-truthy)
@@ -192,39 +201,83 @@ Buttons are now rendered as text with keymap, so we invoke the RET binding."
       (expect (vui-vnode-vstack-spacing node) :to-equal 0)
       (expect (vui-vnode-vstack-indent node) :to-equal 0)))
 
-  (it "renders children vertically"
+  ;; Core joining behavior
+  (it "joins two children with newline"
     (with-temp-buffer
-      (vui-render (vui-vstack (vui-text "line1") (vui-text "line2")))
-      (expect (buffer-string) :to-equal "line1\nline2")))
+      (vui-render (vui-vstack (vui-text "a") (vui-text "b")))
+      (expect (buffer-string) :to-equal "a\nb")))
 
-  (it "renders with spacing (blank lines)"
+  (it "joins three children with newlines"
+    (with-temp-buffer
+      (vui-render (vui-vstack (vui-text "a") (vui-text "b") (vui-text "c")))
+      (expect (buffer-string) :to-equal "a\nb\nc")))
+
+  ;; newline as spacing marker
+  (it "treats newline as empty - one newline adds one blank line"
+    (with-temp-buffer
+      (vui-render (vui-vstack
+                   (vui-text "a")
+                   (vui-newline)
+                   (vui-text "b")))
+      (expect (buffer-string) :to-equal "a\n\nb")))
+
+  (it "treats newline as empty - two newlines add two blank lines"
+    (with-temp-buffer
+      (vui-render (vui-vstack
+                   (vui-text "a")
+                   (vui-newline)
+                   (vui-newline)
+                   (vui-text "b")))
+      (expect (buffer-string) :to-equal "a\n\n\nb")))
+
+  (it "handles newline at start"
+    (with-temp-buffer
+      (vui-render (vui-vstack
+                   (vui-newline)
+                   (vui-text "a")))
+      (expect (buffer-string) :to-equal "\na")))
+
+  (it "handles newline at end"
+    (with-temp-buffer
+      (vui-render (vui-vstack
+                   (vui-text "a")
+                   (vui-newline)))
+      (expect (buffer-string) :to-equal "a\n")))
+
+  ;; Table integration - table has no trailing newline
+  (it "joins table and text with single newline"
+    (with-temp-buffer
+      (vui-render (vui-vstack
+                   (vui-table
+                    :columns '((:width 1 :grow t))
+                    :rows '(("a")))
+                   (vui-text "after")))
+      (expect (buffer-string) :to-equal "a\nafter")))
+
+  (it "joins table with border and text with single newline"
+    (with-temp-buffer
+      (vui-render (vui-vstack
+                   (vui-table
+                    :columns '((:width 1 :grow t))
+                    :rows '(("x"))
+                    :border :ascii)
+                   (vui-text "after")))
+      ;; Table: +---+\n| x |\n+---+ (no trailing newline)
+      ;; Join: \n
+      ;; Text: after
+      (expect (buffer-string) :to-equal "+---+\n| x |\n+---+\nafter")))
+
+  ;; Spacing option
+  (it "renders with spacing adding extra blank lines"
     (with-temp-buffer
       (vui-render (vui-vstack :spacing 1 (vui-text "a") (vui-text "b")))
       (expect (buffer-string) :to-equal "a\n\nb")))
 
-  (it "renders with indent"
+  ;; Indent option
+  (it "renders with indent on each line"
     (with-temp-buffer
       (vui-render (vui-vstack :indent 2 (vui-text "a") (vui-text "b")))
-      (expect (buffer-string) :to-equal "  a\n  b")))
-
-  (it "renders vui-newline as one blank line"
-    (with-temp-buffer
-      (vui-render (vui-vstack
-                   (vui-text "header")
-                   (vui-newline)
-                   (vui-text "content")))
-      (expect (buffer-string) :to-equal "header\n\ncontent")))
-
-  (it "does not add extra blank line after table"
-    (with-temp-buffer
-      (vui-render (vui-vstack
-                   (vui-table
-                    :columns '((:header "Name" :width 4 :grow t))
-                    :rows '(("Al"))
-                    :border :ascii)
-                   (vui-text "after")))
-      ;; Table ends with newline, vstack should not add another
-      (expect (buffer-string) :to-match "\\+------\\+\nafter$"))))
+      (expect (buffer-string) :to-equal "  a\n  b"))))
 
 (describe "vui-box"
   (it "creates a box vnode"
@@ -1036,12 +1089,30 @@ Buttons are now rendered as text with keymap, so we invoke the RET binding."
       (expect (length (vui-vnode-table-columns node)) :to-equal 2)
       (expect (length (vui-vnode-table-rows node)) :to-equal 1)))
 
+  ;; Content-only: no trailing newlines
+  (it "has no trailing newline without borders"
+    (with-temp-buffer
+      (vui-render (vui-table
+                   :columns '((:width 1 :grow t))
+                   :rows '(("a") ("b"))))
+      ;; Internal newlines between rows, but no trailing newline
+      (expect (buffer-string) :to-equal "a\nb")))
+
+  (it "has no trailing newline with borders"
+    (with-temp-buffer
+      (vui-render (vui-table
+                   :columns '((:width 1 :grow t))
+                   :rows '(("x"))
+                   :border :ascii))
+      ;; +---+\n| x |\n+---+ with NO trailing newline
+      (expect (buffer-string) :to-equal "+---+\n| x |\n+---+")))
+
   (it "renders simple table without borders"
     (with-temp-buffer
       (vui-render (vui-table
                    :columns '((:width 4 :grow t) (:width 4 :grow t))
                    :rows '(("A" "B") ("C" "D"))))
-      (expect (buffer-string) :to-equal "A    B   \nC    D   \n")))
+      (expect (buffer-string) :to-equal "A    B   \nC    D   ")))
 
   (it "renders table with headers"
     (with-temp-buffer

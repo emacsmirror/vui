@@ -2145,30 +2145,25 @@ Handles :truncate and overflow:
         (setq first nil))))
 
    ;; Vertical stack
+   ;; Joins children with \n. newline children render as empty string,
+   ;; effectively adding an extra \n (blank line) via the join.
    ((vui-vnode-vstack-p vnode)
     (let ((spacing (or (vui-vnode-vstack-spacing vnode) 0))
           (indent (or (vui-vnode-vstack-indent vnode) 0))
           (children (vui-vnode-vstack-children vnode))
           (indent-str nil)
-          (first t)
-          (prev-ended-newline nil))
+          (first t))
       (setq indent-str (make-string indent ?\s))
       (dolist (child children)
-        ;; Add separator newline unless:
-        ;; - This is the first child
-        ;; - This child is a vui-newline (it provides its own line break)
-        ;; - Previous child ended with newline (e.g., table with border)
-        (unless (or first (vui-vnode-newline-p child) prev-ended-newline)
+        ;; Add separator newline (plus spacing) before each child except first
+        (unless first
           (insert "\n")
           (dotimes (_ spacing) (insert "\n")))
+        ;; newline children render as empty string (marker for blank line)
+        ;; other children get indent prefix and rendered content
         (unless (vui-vnode-newline-p child)
-          (insert indent-str))
-        (vui--render-vnode child)
-        ;; Track if this child ended with a newline (for block elements like tables)
-        ;; Don't track for vui-newline since it has explicit handling
-        (setq prev-ended-newline (and (not (vui-vnode-newline-p child))
-                                      (> (point) (point-min))
-                                      (eq (char-before) ?\n)))
+          (insert indent-str)
+          (vui--render-vnode child))
         (setq first nil))))
 
    ;; Fixed-width box
@@ -2240,7 +2235,11 @@ Handles :truncate and overflow:
               ;; Render data row
               (vui--render-table-row row col-widths columns border nil)))
           (when border
-            (vui--render-table-border col-widths border 'bottom cell-padding))))))
+            (vui--render-table-border col-widths border 'bottom cell-padding))))
+      ;; Remove trailing newline - tables emit content only, no trailing newline
+      (when (and (> (point) (point-min))
+                 (eq (char-before) ?\n))
+        (delete-char -1))))
 
    ;; Field (editable text input)
    ((vui-vnode-field-p vnode)
