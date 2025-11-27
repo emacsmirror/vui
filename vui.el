@@ -2153,10 +2153,14 @@ Handles :truncate and overflow:
           (first t))
       (setq indent-str (make-string indent ?\s))
       (dolist (child children)
-        (unless first
+        ;; Add separator newline unless:
+        ;; - This is the first child
+        ;; - This child is a vui-newline (it provides its own line break)
+        (unless (or first (vui-vnode-newline-p child))
           (insert "\n")
           (dotimes (_ spacing) (insert "\n")))
-        (insert indent-str)
+        (unless (vui-vnode-newline-p child)
+          (insert indent-str))
         (vui--render-vnode child)
         (setq first nil))))
 
