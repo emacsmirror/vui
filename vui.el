@@ -2084,15 +2084,15 @@ Handles :truncate and overflow:
    ((vui-vnode-space-p vnode)
     (insert (make-string (vui-vnode-space-width vnode) ?\s)))
 
-   ;; Button
+   ;; Button - uses widget.el push-button for proper TAB navigation
    ((vui-vnode-button-p vnode)
     (let* ((label (vui-vnode-button-label vnode))
            (on-click (vui-vnode-button-on-click vnode))
            (face (vui-vnode-button-face vnode))
            (disabled (vui-vnode-button-disabled-p vnode))
            (max-width (vui-vnode-button-max-width vnode))
-           ;; Format button text: [label] with possible truncation
-           ;; Brackets take 2 chars, "..." takes 3 chars
+           ;; Pre-truncate label before passing to widget
+           ;; Widget adds brackets, so account for 2 chars
            ;; Minimum button is [...] = 5 chars
            (display-label
             (if (and max-width (> (+ (string-width label) 2) max-width))
@@ -2102,40 +2102,20 @@ Handles :truncate and overflow:
                       "..."  ; Just show [...] for very small widths
                     (concat (substring label 0 (min available (length label))) "...")))
               label))
-           (button-text (concat "[" display-label "]"))
            ;; Capture instance context for callback
            (captured-instance vui--current-instance)
            (captured-root vui--root-instance)
            ;; Wrap callback with error handling
            (wrapped-click (vui--wrap-event-callback "on-click" on-click captured-instance)))
-      (if disabled
-          ;; Render disabled button as inactive text
-          (let ((start (point)))
-            (insert button-text)
-            (put-text-property start (point) 'face (or face 'shadow)))
-        ;; Render active button as clickable text (not widget)
-        ;; This gives us exact control over visual width
-        (let ((start (point))
-              (map (make-sparse-keymap)))
-          (define-key map [mouse-1]
-                      (lambda (_event)
-                        (interactive "e")
-                        (when wrapped-click
-                          (let ((vui--current-instance captured-instance)
-                                (vui--root-instance captured-root))
-                            (funcall wrapped-click)))))
-          (define-key map (kbd "RET")
-                      (lambda ()
-                        (interactive)
-                        (when wrapped-click
-                          (let ((vui--current-instance captured-instance)
-                                (vui--root-instance captured-root))
-                            (funcall wrapped-click)))))
-          (insert button-text)
-          (put-text-property start (point) 'face (or face 'link))
-          (put-text-property start (point) 'mouse-face 'highlight)
-          (put-text-property start (point) 'keymap map)
-          (put-text-property start (point) 'help-echo "mouse-1: click")))))
+      (widget-create 'push-button
+                     :tag display-label
+                     :button-face (or face 'link)
+                     :inactive (when disabled t)
+                     :action (lambda (_widget &optional _event)
+                               (when wrapped-click
+                                 (let ((vui--current-instance captured-instance)
+                                       (vui--root-instance captured-root))
+                                   (funcall wrapped-click)))))))
 
    ;; Checkbox
    ((vui-vnode-checkbox-p vnode)

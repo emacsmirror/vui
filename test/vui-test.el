@@ -9,14 +9,13 @@
 (require 'buttercup)
 (require 'vui)
 
-;; Helper to click buttons (which are now text with keymap, not widgets)
+;; Helper to click buttons (widget.el push-buttons)
 (defun vui-test--click-button-at (pos)
-  "Invoke the button at POS.
-Buttons are now rendered as text with keymap, so we invoke the RET binding."
-  (let* ((keymap (get-text-property pos 'keymap))
-         (binding (when keymap (lookup-key keymap (kbd "RET")))))
-    (when binding
-      (funcall binding))))
+  "Invoke the button widget at POS.
+Buttons are widget.el push-buttons, so we use widget-apply."
+  (let ((widget (widget-at pos)))
+    (when widget
+      (widget-apply widget :action))))
 
 (describe "vui.el"
   (it "loads successfully"

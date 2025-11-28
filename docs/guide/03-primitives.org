@@ -74,6 +74,9 @@ Inserts whitespace:
 
 * Interactive Elements
 
+All interactive elements (buttons, fields, checkboxes, selects) support keyboard
+navigation with =TAB= / =S-TAB= to move between them.
+
 ** =vui-button= — Clickable Button
 
 Creates a button that responds to user activation (=RET= or mouse click).

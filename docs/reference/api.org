@@ -91,6 +91,9 @@ Mount a component as root and render to a buffer.
 
 * Primitives
 
+Interactive primitives (buttons, fields, checkboxes, selects) support =TAB= /
+=S-TAB= keyboard navigation.
+
 ** vui-text
 
 #+begin_src elisp
