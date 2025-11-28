@@ -108,7 +108,7 @@ should be rendered, not /how/ to update it.
                               v
 +-----------------------------------------------------------------+
 |                    Component Registry                           |
-|  Stores component definitions (type -> definition)               |
+|  Stores component definitions (type -> definition)              |
 +-----------------------------------------------------------------+
                               |
                               v
@@ -2312,7 +2312,7 @@ Text that shouldn't be edited needs protection:
 Fields explicitly remove read-only in their region.
 
 
-** Focus and Navigation
+* Focus and Navigation
 :PROPERTIES:
 :CUSTOM_ID: focus-and-navigation
 :END:
@@ -3272,36 +3272,36 @@ would be excessive (>3 levels)
 Components go through distinct phases:
 
 #+begin_example
-+-----------------------------------------------------------------+
-|                     MOUNTING                                    |
-|  1. Create instance                                             |
-|  2. Initialize state (initial-state-fn)                         |
-|  3. Render (render-fn)                                          |
-|  4. Commit to buffer                                            |
-|  5. Run effects                                                 |
-|  6. Call on-mount                                               |
-+-----------------------------------------------------------------+
-                              |
-                              v
-+-----------------------------------------------------------------+
-|                     UPDATING (repeated)                         |
-|  1. Receive new props or state change                           |
-|  2. Check should-update                                         |
-|  3. Render (render-fn)                                          |
-|  4. Reconcile and commit                                        |
-|  5. Run effect cleanups for changed deps                        |
-|  6. Run effects for changed deps                                |
-|  7. Call on-update                                              |
-+-----------------------------------------------------------------+
-                              |
-                              v
-+-----------------------------------------------------------------+
-|                     UNMOUNTING                                  |
-|  1. Run all effect cleanups                                     |
-|  2. Call on-unmount                                             |
-|  3. Remove from buffer                                          |
-|  4. Clean up instance                                           |
-+-----------------------------------------------------------------+
++--------------------------------------------------+
+|                      MOUNTING                    |
+|  1. Create instance                              |
+|  2. Initialize state (initial-state-fn)          |
+|  3. Render (render-fn)                           |
+|  4. Commit to buffer                             |
+|  5. Run effects                                  |
+|  6. Call on-mount                                |
++--------------------------------------------------+
+                          |
+                          v
++--------------------------------------------------+
+|                 UPDATING (repeated)              |
+|  1. Receive new props or state change            |
+|  2. Check should-update                          |
+|  3. Render (render-fn)                           |
+|  4. Reconcile and commit                         |
+|  5. Run effect cleanups for changed deps         |
+|  6. Run effects for changed deps                 |
+|  7. Call on-update                               |
++--------------------------------------------------+
+                          |
+                          v
++--------------------------------------------------+
+|                     UNMOUNTING                   |
+|  1. Run all effect cleanups                      |
+|  2. Call on-unmount                              |
+|  3. Remove from buffer                           |
+|  4. Clean up instance                            |
++--------------------------------------------------+
 #+end_example
 
 ** Hook Definitions in defcomponent
@@ -3876,42 +3876,30 @@ Returns the root instance."
      'text vnode parent-instance start (point))))
 
 (defun vui--render-button (vnode parent-instance)
-  "Render a button vnode."
-  (let ((start (point))
-        (label (vui-vnode-button-label vnode))
-        (face (or (vui-vnode-button-face vnode) 'button))
-        (on-click (vui-vnode-button-on-click vnode))
-        (disabled (vui-vnode-button-disabled-p vnode)))
+  "Render a button vnode using widget.el push-button.
 
-    ;; Insert button text
-    (insert (if (stringp label) label "[button]"))
+Uses widget.el's push-button widget for proper TAB/S-TAB navigation
+and consistent keyboard handling across all interactive elements."
+  (let* ((label (vui-vnode-button-label vnode))
+         (face (or (vui-vnode-button-face vnode) 'link))
+         (on-click (vui-vnode-button-on-click vnode))
+         (disabled (vui-vnode-button-disabled-p vnode))
+         (max-width (vui-vnode-button-max-width vnode))
+         ;; Truncate label if max-width specified
+         (display-label
+          (if (and max-width (> (+ (string-width label) 2) max-width))
+              (let ((available (- max-width 5)))
+                (if (<= available 0) "..."
+                  (concat (substring label 0 (min available (length label))) "...")))
+            label)))
 
-    ;; Create overlay for button behavior
-    (let ((overlay (make-overlay start (point))))
-      (overlay-put overlay 'face (if disabled 'shadow face))
-      (overlay-put overlay 'mouse-face (unless disabled 'highlight))
-      (overlay-put overlay 'keymap (vui--button-keymap on-click disabled))
-      (overlay-put overlay 'vui-button t)
-      (overlay-put overlay 'vui-on-click on-click)
-      (overlay-put overlay 'help-echo (unless disabled "Click to activate"))
-
-      ;; Create instance with overlay
-      (let ((instance (vui--create-primitive-instance
-                       'button vnode parent-instance start (point))))
-        (push overlay (vui-instance-overlays instance))
-        instance))))
-
-(defun vui--button-keymap (on-click disabled)
-  "Create keymap for button."
-  (let ((map (make-sparse-keymap)))
-    (unless disabled
-      (define-key map [mouse-1]
-        (lambda () (interactive) (funcall on-click)))
-      (define-key map (kbd "RET")
-        (lambda () (interactive) (funcall on-click)))
-      (define-key map (kbd "SPC")
-        (lambda () (interactive) (funcall on-click))))
-    map))
+    ;; Create widget.el push-button
+    (widget-create 'push-button
+                   :tag display-label
+                   :button-face face
+                   :inactive (when disabled t)
+                   :action (lambda (_widget &optional _event)
+                             (when on-click (funcall on-click))))))
 
 (defun vui--render-field (vnode parent-instance)
   "Render an editable field vnode."
@@ -4188,6 +4176,13 @@ Errors can occur at different phases:
 3. **Effect errors**: Exception in effect or cleanup function
 4. **Event handler errors**: Exception in on-click/on-change callbacks
 
+*Implementation Note*: The pseudocode below shows errors stored in
+instance slots (=vui-instance-error=). The actual implementation uses a
+global hash table =vui--error-boundary-errors= keyed by boundary ID for
+simpler state management. This avoids adding an =error= slot to every
+instance. Recovery is done via =vui-reset-error-boundary= which takes a
+boundary ID.
+
 ** Error Boundary Pattern
 
 Like React, we support error boundaries — components that catch errors in their subtree:
@@ -4450,8 +4445,8 @@ Signature: (lambda (error instance phase) ...)")
 :PROPERTIES:
 :CUSTOM_ID: primitive-vnodes
 :END:
-| Function                        | Description           | Key Props                                  |
-|---------------------------------+-----------------------+--------------------------------------------|
+| Function                         | Description           | Key Props                                  |
+|----------------------------------+-----------------------+--------------------------------------------|
 | =(vui-text CONTENT &rest PROPS)= | Plain text            | =:face=, =:properties=                     |
 | =(vui-button &rest PROPS)=       | Clickable button      | =:label=, =:on-click=, =:disabled=         |
 | =(vui-field &rest PROPS)=        | Editable text field   | =:value=, =:on-change=, =:size=, =:keymap= |
@@ -4463,8 +4458,8 @@ Signature: (lambda (error instance phase) ...)")
 :PROPERTIES:
 :CUSTOM_ID: layout-vnodes
 :END:
-| Function                 | Description            | Key Props                      |
-|--------------------------+------------------------+--------------------------------|
+| Function                  | Description            | Key Props                      |
+|---------------------------+------------------------+--------------------------------|
 | =(vui-hstack &rest ARGS)= | Horizontal layout      | =:spacing=, =:align=           |
 | =(vui-vstack &rest ARGS)= | Vertical layout        | =:spacing=, =:indent=          |
 | =(vui-box &rest ARGS)=    | Fixed-width container  | =:width=, =:align=, =:padding= |
@@ -4520,8 +4515,11 @@ Signature: (lambda (error instance phase) ...)")
 :CUSTOM_ID: rendering
 :END:
 #+begin_src elisp
-;; Mount tree into buffer
-(vui-render VNODE &optional BUFFER POSITION) -> INSTANCE
+;; Mount tree into a named buffer (common entry point)
+(vui-mount VNODE BUFFER-OR-NAME) -> INSTANCE
+
+;; Render into current buffer at point
+(vui-render VNODE &optional BUFFER) -> INSTANCE
 
 ;; Unmount
 (vui-unmount INSTANCE)
@@ -4684,8 +4682,10 @@ timing instrumentation (=vui-timing-enabled=, =vui-report-timing=)
 debugging/logging (=vui-debug-enabled=, =vui-debug-show=)
 
 *5.3 Documentation & Examples* - [X] API documentation with docstrings -
-[ ] Comprehensive user guide - [ ] Tutorial: building a todo app - [ ]
-Example: file browser - [ ] Example: form with validation
+[X] User guide (=docs/guide/=) - [X] Tutorial: building a todo app
+(=docs/examples/02-todo-app.el=) - [X] Example: file browser
+(=docs/examples/04-file-browser.el=) - [X] Example: form with validation
+(=docs/examples/03-forms.el=)
 
 *Deliverable*: Production-ready library with tooling and documentation.
 
@@ -4696,11 +4696,74 @@ Example: file browser - [ ] Example: form with validation
 :END:
 | Milestone              | Phase | Deliverable                                                  | Status |
 |------------------------+-------+--------------------------------------------------------------+--------|
-| *M1: Hello World*      | 1     | Static components with basic state and interaction           | ✓      |
-| *M2: Todo App*         | 2     | List with add/remove, efficient updates, cursor preservation | ✓      |
-| *M3: Feature Complete* | 4     | All core features working                                    | ✓      |
-| *M4: Production Ready* | 5     | Optimised, documented, tested                                | WIP    |
+| *M1: Hello World*      |     1 | Static components with basic state and interaction           | ✓      |
+| *M2: Todo App*         |     2 | List with add/remove, efficient updates, cursor preservation | ✓      |
+| *M3: Feature Complete* |     4 | All core features working                                    | ✓      |
+| *M4: Production Ready* |     5 | Optimised, documented, tested                                | ✓      |
 
+
+** Implementation Status
+:PROPERTIES:
+:CUSTOM_ID: implementation-status
+:END:
+
+This section tracks what has been implemented versus what remains from
+the original design.
+
+*** Achieved (matching design)
+
+| Category         | Feature                                    | Status |
+|------------------+--------------------------------------------+--------|
+| *Core*           | =defcomponent= macro                       | ✓      |
+|                  | Props and state management                 | ✓      |
+|                  | =vui-set-state=                            | ✓      |
+|                  | =vui-mount= / =vui-render=                 | ✓      |
+| *Primitives*     | =vui-text=, =vui-button=, =vui-field=      | ✓      |
+|                  | =vui-newline=, =vui-space=, =vui-fragment= | ✓      |
+|                  | =vui-checkbox=, =vui-select=               | ✓      |
+| *Layout*         | =vui-hstack=, =vui-vstack=, =vui-box=      | ✓      |
+|                  | =vui-table= (borders, alignment)           | ✓      |
+|                  | =vui-list=                                 | ✓      |
+| *Hooks*          | =use-effect= with cleanup                  | ✓      |
+|                  | =use-ref=, =use-callback=, =use-memo=      | ✓      |
+|                  | =use-callback*=, =use-memo*= (custom cmp)  | ✓      |
+| *Context*        | =defcontext= macro                         | ✓      |
+|                  | Provider vnodes, =use-NAME= consumption    | ✓      |
+| *Lifecycle*      | =on-mount=, =on-update=, =on-unmount=      | ✓      |
+| *Optimisation*   | =should-update= predicate                  | ✓      |
+|                  | =vui-batch=, =vui-flush-sync=              | ✓      |
+|                  | =vui-idle-render-delay=                    | ✓      |
+|                  | =vui-timing-enabled= instrumentation       | ✓      |
+| *Error*          | =vui-error-boundary=                       | ✓      |
+|                  | =vui-reset-error-boundary=                 | ✓      |
+|                  | Event handler error wrapping               | ✓      |
+| *Dev Tools*      | =vui-inspect=, =vui-inspect-state=         | ✓      |
+|                  | =vui-debug-enabled=, debug logging         | ✓      |
+| *Reconciliation* | Key-based matching                         | ✓      |
+|                  | Cursor preservation                        | ✓      |
+
+*** Not Implemented (deferred)
+
+These features are described in the design but not yet implemented.
+They may be added in future versions if needed.
+
+| Feature               | Design Section      | Notes                          |
+|-----------------------+---------------------+--------------------------------|
+| =let-state=           | State Management    | Binding form with setf support |
+| =let-memo=            | State Hooks         | Binding form for memos         |
+| =use-reducer=         | Reducer Pattern     | Hook for reducer pattern state |
+| =vui-hidden=          | Conditional Layout  | Hide without unmount           |
+| =vui-separator=       | Example code        | Visual separator utility       |
+| =vui-reset-component= | Recovery Strategies | Reset single component state   |
+| =vui-reset-tree=      | Recovery Strategies | Reset entire tree              |
+| Fine-grained diff ops | Diff Operations     | =vui-op-*= structs (see note)  |
+
+*Note on Reconciliation*: The design describes fine-grained diff
+operations (insert, delete, replace, move, update-props). The current
+implementation uses a simpler clear-and-rerender approach with widget
+preservation. This prioritises correctness and simplicity. Once the API
+is mature and well-tested, fine-grained diffing can be added as an
+optimisation if needed.
 
 ** Testing Strategy
 :PROPERTIES:
@@ -4898,16 +4961,16 @@ Existing widget.el code can coexist. To wrap a widget:
 :PROPERTIES:
 :CUSTOM_ID: appendix-c-naming-conventions
 :END:
-| Prefix         | Meaning                   |
-|----------------+---------------------------|
+| Prefix          | Meaning                   |
+|-----------------+---------------------------|
 | =vui-=          | Public API                |
 | =vui--=         | Internal/private          |
 | =vui-vnode-=    | Virtual node types        |
 | =vui-instance-= | Instance accessors        |
 | =vui-op-=       | Diff operations           |
-| =use-=         | Hooks (consume in render) |
-| =let-=         | Binding forms             |
-| =def=          | Definition forms          |
+| =use-=          | Hooks (consume in render) |
+| =let-=          | Binding forms             |
+| =def=           | Definition forms          |
 
 
 * Appendix D: Open Questions & Future Work
