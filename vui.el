@@ -1984,25 +1984,34 @@ Handles :truncate and overflow:
                   (when (> cell-padding 0)
                     (insert (make-string cell-padding ?\s)))
                   ;; Render cell content with alignment
-                  (pcase align
-                    (:left
-                     (if face
-                         (insert (propertize display-content 'face face))
-                       (insert display-content))
-                     (insert (make-string padding ?\s)))
-                    (:right
-                     (insert (make-string padding ?\s))
-                     (if face
-                         (insert (propertize display-content 'face face))
-                       (insert display-content)))
-                    (:center
-                     (let ((left-pad (/ padding 2))
-                           (right-pad (- padding (/ padding 2))))
-                       (insert (make-string left-pad ?\s))
-                       (if face
-                           (insert (propertize display-content 'face face))
-                         (insert display-content))
-                       (insert (make-string right-pad ?\s)))))
+                  ;; For vnodes (buttons, etc.), render directly to preserve interactivity
+                  ;; For strings, insert with optional face
+                  (let ((is-vnode (and cell (not (stringp cell)))))
+                    (pcase align
+                      (:left
+                       (if is-vnode
+                           (vui--render-vnode cell)
+                         (if face
+                             (insert (propertize display-content 'face face))
+                           (insert display-content)))
+                       (insert (make-string padding ?\s)))
+                      (:right
+                       (insert (make-string padding ?\s))
+                       (if is-vnode
+                           (vui--render-vnode cell)
+                         (if face
+                             (insert (propertize display-content 'face face))
+                           (insert display-content))))
+                      (:center
+                       (let ((left-pad (/ padding 2))
+                             (right-pad (- padding (/ padding 2))))
+                         (insert (make-string left-pad ?\s))
+                         (if is-vnode
+                             (vui--render-vnode cell)
+                           (if face
+                               (insert (propertize display-content 'face face))
+                             (insert display-content)))
+                         (insert (make-string right-pad ?\s))))))
                   ;; Right cell padding and column separator
                   ;; When overflow, use padding + overflow separator + trimmed overflow content
                   (cond
