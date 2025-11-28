@@ -473,7 +473,15 @@ Buttons are now rendered as text with keymap, so we invoke the RET binding."
       :state ((count 0))
       :render (vui-text (number-to-string count)))
     (let ((def (vui--get-component 'test-counter)))
-      (expect (vui-component-def-initial-state-fn def) :to-be-truthy))))
+      (expect (vui-component-def-initial-state-fn def) :to-be-truthy)))
+
+  (it "allows state initializers to access props"
+    (defcomponent test-prop-to-state (initial-value)
+      :state ((value initial-value))  ; state initialized from prop
+      :render (vui-text (format "Value: %s" value)))
+    (with-temp-buffer
+      (vui-render (vui-component 'test-prop-to-state :initial-value "hello"))
+      (expect (buffer-string) :to-equal "Value: hello"))))
 
 (describe "vui-component"
   (it "creates a component vnode"

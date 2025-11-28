@@ -698,10 +698,15 @@ Example:
              :name ',name
              :props-spec ',args
              :initial-state-fn ,(if state-spec
-                                    `(lambda (_props)
-                                       (list ,@(cl-mapcan (lambda (var init)
-                                                            (list (intern (format ":%s" var)) init))
-                                                state-vars state-inits)))
+                                    `(lambda (--props--)
+                                       ;; Bind props so state initializers can reference them
+                                       (let (,@(mapcar (lambda (arg)
+                                                         `(,arg (plist-get --props-- ,(intern (format ":%s" arg)))))
+                                                args))
+                                         (ignore ,@args)
+                                         (list ,@(cl-mapcan (lambda (var init)
+                                                              (list (intern (format ":%s" var)) init))
+                                                  state-vars state-inits))))
                                   nil)
              :render-fn ,(make-body-fn render-form)
              :on-mount ,(when on-mount-form (make-body-fn on-mount-form))
