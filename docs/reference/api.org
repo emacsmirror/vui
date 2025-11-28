@@ -146,19 +146,25 @@ Group multiple vnodes without adding structure.
 (vui-button LABEL &rest PROPS) -> vnode
 #+end_src
 
-Create a clickable button.
+Create a clickable button. Buttons render with brackets: =LABEL= becomes =[LABEL]=.
 
-| Property    | Type     | Description              |
-|-------------+----------+--------------------------|
-| =:on-click= | function | Click handler            |
-| =:face=     | symbol   | Button face              |
-| =:disabled= | boolean  | Disable button           |
-| =:key=      | any      | Reconciliation key       |
+| Property     | Type     | Description                                |
+|--------------+----------+--------------------------------------------|
+| =:on-click=  | function | Click handler                              |
+| =:face=      | symbol   | Button face                                |
+| =:disabled=  | boolean  | Disable button                             |
+| =:max-width= | integer  | Max width including brackets (truncates)   |
+| =:key=       | any      | Reconciliation key                         |
 
 #+begin_src elisp
 (vui-button "Click me"
             :on-click (lambda () (message "Clicked!"))
             :face 'custom-button)
+;; Renders: [Click me]
+
+;; Truncated button
+(vui-button "Very long label" :max-width 12)
+;; Renders: [Very lo...]
 #+end_src
 
 ** vui-field

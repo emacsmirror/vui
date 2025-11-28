@@ -77,30 +77,42 @@ Inserts whitespace:
 ** =vui-button= — Clickable Button
 
 Creates a button that responds to user activation (=RET= or mouse click).
+Buttons are rendered with brackets: =LABEL= becomes =[LABEL]=.
 
 #+begin_src elisp
 (vui-button "Click me"
             :on-click (lambda () (message "Clicked!")))
 #+end_src
 
+Output:
+#+begin_example
+[Click me]
+#+end_example
+
 *** Button Properties
 
-| Property     | Description                          |
-|--------------+--------------------------------------|
-| =:on-click=  | Callback when activated              |
-| =:face=      | Button face/styling                  |
-| =:disabled=  | When non-nil, button is inactive     |
-| =:key=       | Key for reconciliation               |
+| Property      | Description                              |
+|---------------+------------------------------------------|
+| =:on-click=   | Callback when activated                  |
+| =:face=       | Button face/styling                      |
+| =:disabled=   | When non-nil, button is inactive         |
+| =:max-width=  | Maximum width including brackets         |
+| =:key=        | Key for reconciliation                   |
 
 *** Disabled Button
 
-Disabled buttons render as plain text and don't respond to clicks:
+Disabled buttons render as plain text (still with brackets) and don't respond to clicks:
 
 #+begin_src elisp
 (vui-button "Submit"
             :on-click #'do-submit
             :disabled (not form-valid))
 #+end_src
+
+Output (when disabled):
+#+begin_example
+[Submit]
+#+end_example
 
 *** Styled Button
 
@@ -109,6 +121,25 @@ Disabled buttons render as plain text and don't respond to clicks:
             :on-click #'dangerous-action
             :face '(:foreground "red" :weight bold))
 #+end_src
+
+*** Truncated Button
+
+When =:max-width= is set and the button label (including brackets) exceeds that
+width, the label is truncated with "...":
+
+#+begin_src elisp
+(vui-button "Very long button label"
+            :max-width 15
+            :on-click #'action)
+#+end_src
+
+Output:
+#+begin_example
+[Very long b...]
+#+end_example
+
+This is particularly useful in table cells with =:truncate= enabled, where the
+column width is passed automatically to button children.
 
 ** =vui-field= — Text Input
 
@@ -295,7 +326,7 @@ Fragments can be nested and will be flattened:
 | =vui-text=       | Display text           | =:face=, =:key=              |
 | =vui-newline=    | Line break             | =:key=                       |
 | =vui-space=      | Whitespace             | width, =:key=                |
-| =vui-button=     | Clickable button       | =:on-click=, =:disabled=     |
+| =vui-button=     | Clickable button       | =:on-click=, =:disabled=, =:max-width= |
 | =vui-field=      | Text input             | =:value=, =:on-change=       |
 | =vui-checkbox=   | Toggle checkbox        | =:checked=, =:on-change=     |
 | =vui-select=     | Dropdown selection     | value, options, =:on-change= |
