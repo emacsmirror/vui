@@ -720,6 +720,7 @@ Example:
 (defun vui-text (content &rest props)
   "Create a text vnode with CONTENT and optional PROPS.
 PROPS is a plist accepting :face, :key, and other text properties."
+  (declare (indent 1))
   (vui-vnode-text--create
    :content content
    :face (plist-get props :face)
@@ -744,6 +745,7 @@ PROPS is a plist accepting :face, :key, and other text properties."
   "Create a button vnode with LABEL and optional PROPS.
 PROPS is a plist accepting :on-click, :face, :disabled, :max-width, :key.
 When :max-width is set, the button will truncate its label to fit."
+  (declare (indent 1))
   (vui-vnode-button--create
    :label label
    :on-click (plist-get props :on-click)
@@ -887,6 +889,7 @@ PROPS is a plist accepting:
   :key KEY - for reconciliation
 
 Usage: (vui-box (vui-text \"hello\") :width 20 :align :center)"
+  (declare (indent 1))
   (vui-vnode-box--create
    :child child
    :width (or (plist-get props :width) 20)
@@ -1014,6 +1017,7 @@ Usage:
   "Create a component vnode of TYPE with PROPS-AND-CHILDREN.
 TYPE is a symbol naming a defined component.
 PROPS-AND-CHILDREN is a plist of props, optionally ending with :children."
+  (declare (indent 1))
   (let ((props nil)
         (children nil)
         (rest props-and-children))
