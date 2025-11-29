@@ -1489,6 +1489,29 @@ Called from within a component's render function."
         (puthash memo-id (cons deps new-value) cache)
         new-value))))
 
+(defun vui--save-window-starts (buffer)
+  "Save window-start line numbers for all windows showing BUFFER.
+Returns alist of (WINDOW . LINE-NUMBER)."
+  (let ((result nil))
+    (dolist (window (get-buffer-window-list buffer nil t))
+      (with-selected-window window
+        (let ((line (line-number-at-pos (window-start window))))
+          (push (cons window line) result))))
+    result))
+
+(defun vui--restore-window-starts (window-info)
+  "Restore window-start positions from WINDOW-INFO.
+WINDOW-INFO is alist of (WINDOW . LINE-NUMBER)."
+  (dolist (entry window-info)
+    (let ((window (car entry))
+          (line (cdr entry)))
+      (when (window-live-p window)
+        (with-selected-window window
+          (save-excursion
+            (goto-char (point-min))
+            (forward-line (1- line))
+            (set-window-start window (point))))))))
+
 (defun vui--rerender-instance (instance)
   "Re-render INSTANCE and update the buffer."
   (let ((buffer (vui-instance-buffer instance)))
@@ -1497,8 +1520,10 @@ Called from within a component's render function."
         (let* ((inhibit-read-only t)
                (inhibit-redisplay t)  ; Prevent flicker
                (inhibit-modification-hooks t)  ; Prevent widget-after-change errors
-               ;; Save widget-relative position
+               ;; Save widget-relative cursor position
                (cursor-info (vui--save-cursor-position))
+               ;; Save viewport (window-start) for all windows showing this buffer
+               (window-info (vui--save-window-starts buffer))
                (vui--root-instance instance)
                ;; Clear pending effects before render
                (vui--pending-effects nil))
@@ -1513,6 +1538,8 @@ Called from within a component's render function."
           (use-local-map widget-keymap)
           ;; Restore cursor position
           (vui--restore-cursor-position cursor-info)
+          ;; Restore viewport for all windows
+          (vui--restore-window-starts window-info)
           ;; Run effects after commit
           (vui--run-pending-effects))))))
 
