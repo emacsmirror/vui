@@ -559,6 +559,7 @@ Returns a list of instances."
   refs        ; Hash table of ref-id -> (value . nil) for use-ref
   callbacks   ; Hash table of callback-id -> (deps . fn) for use-callback
   memos       ; Hash table of memo-id -> (deps . value) for let-memo
+  asyncs      ; Hash table of async-id -> (key status data error timer) for use-async
   prev-props  ; Props from previous render (for on-update)
   prev-state) ; State from previous render (for on-update)
 
@@ -593,6 +594,13 @@ Returns a list of instances."
 
 (defvar vui--memo-index 0
   "Counter for auto-generating memo IDs within a component render.")
+
+(defvar vui--async-index 0
+  "Counter for auto-generating async IDs within a component render.")
+
+(defvar vui--rendering-p nil
+  "Non-nil when a render is in progress.
+Used to prevent nested re-renders from use-async resolve callbacks.")
 
 (defvar vui--context-stack nil
   "Stack of context bindings during render.
@@ -1491,6 +1499,144 @@ Called from within a component's render function."
         (puthash memo-id (cons deps new-value) cache)
         new-value))))
 
+;;; Async Data Loading
+
+(defmacro use-async (key loader)
+  "Asynchronously load data using LOADER, identified by KEY.
+
+Returns a plist with:
+  :status - One of `pending', `ready', or `error'
+  :data   - The loaded data (when status is `ready')
+  :error  - The error message (when status is `error')
+
+KEY should uniquely identify this async operation. When KEY changes,
+the previous load is cancelled and a new one starts.
+
+LOADER is a function that takes two arguments: RESOLVE and REJECT.
+- Call (funcall RESOLVE data) when the async operation succeeds
+- Call (funcall REJECT error-message) when it fails
+
+The loader is invoked immediately (not deferred). For truly non-blocking
+operations, use async mechanisms like `make-process' inside the loader.
+
+Examples:
+  ;; Synchronous computation (still useful for caching/error handling)
+  (use-async \\='user-data
+    (lambda (resolve reject)
+      (condition-case err
+          (funcall resolve (compute-expensive-data))
+        (error (funcall reject (error-message-string err))))))
+
+  ;; Truly async with external process
+  (use-async \\='balance
+    (lambda (resolve reject)
+      (make-process
+        :name \"hledger\"
+        :command \\='(\"hledger\" \"balance\" ...)
+        :sentinel (lambda (proc event)
+                    (if (eq 0 (process-exit-status proc))
+                        (funcall resolve (parse-output proc))
+                      (funcall reject \"hledger failed\"))))))
+
+  ;; With dynamic key (reloads when user-id changes)
+  (use-async (list \\='user user-id)
+    (lambda (resolve _reject)
+      (funcall resolve (fetch-user-data user-id))))"
+  (declare (indent 1))
+  `(vui--register-async ,key ,loader))
+
+(defun vui--register-async (key loader-fn)
+  "Register an async load with KEY and LOADER-FN.
+Called from within a component's render function.
+LOADER-FN receives (resolve reject) callbacks.
+Returns a plist with :status, :data, and :error."
+  (unless vui--current-instance
+    (error "use-async called outside of component context"))
+  (let* ((instance vui--current-instance)
+         (async-id vui--async-index)
+         (cache (or (vui-instance-asyncs instance)
+                    (let ((tbl (make-hash-table :test 'equal)))
+                      (setf (vui-instance-asyncs instance) tbl)
+                      tbl)))
+         (entry (gethash async-id cache))
+         (prev-key (plist-get entry :key))
+         (prev-process (plist-get entry :process)))
+    ;; Increment async counter for next use-async call
+    (cl-incf vui--async-index)
+    ;; Check if key changed or first call
+    (if (and entry (equal prev-key key))
+        ;; Key unchanged - return cached result
+        (list :status (plist-get entry :status)
+              :data (plist-get entry :data)
+              :error (plist-get entry :error))
+      ;; Key changed or first call - start new async load
+      ;; Kill previous process if still running
+      (when (and prev-process (process-live-p prev-process))
+        (delete-process prev-process))
+      ;; Set pending state
+      (let* ((root vui--root-instance)
+             (buffer (vui-instance-buffer instance))
+             (new-entry (list :key key :status 'pending :data nil :error nil :process nil))
+             ;; Create resolve callback
+             (resolve (lambda (data)
+                        (when (buffer-live-p buffer)
+                          (plist-put new-entry :status 'ready)
+                          (plist-put new-entry :data data)
+                          (plist-put new-entry :process nil)
+                          (puthash async-id new-entry cache)
+                          ;; Trigger re-render (defer if already rendering)
+                          (when root
+                            (if vui--rendering-p
+                                ;; Defer re-render to avoid nested renders
+                                (run-with-timer 0 nil
+                                                (lambda ()
+                                                  (when (buffer-live-p buffer)
+                                                    (vui--rerender-instance root))))
+                              (vui--rerender-instance root))))))
+             ;; Create reject callback
+             (reject (lambda (error-msg)
+                       (when (buffer-live-p buffer)
+                         (plist-put new-entry :status 'error)
+                         (plist-put new-entry :error error-msg)
+                         (plist-put new-entry :process nil)
+                         (puthash async-id new-entry cache)
+                         ;; Trigger re-render (defer if already rendering)
+                         (when root
+                           (if vui--rendering-p
+                               ;; Defer re-render to avoid nested renders
+                               (run-with-timer 0 nil
+                                               (lambda ()
+                                                 (when (buffer-live-p buffer)
+                                                   (vui--rerender-instance root))))
+                             (vui--rerender-instance root)))))))
+        ;; Store entry immediately (so it's available for caching)
+        (puthash async-id new-entry cache)
+        ;; Call loader with resolve/reject callbacks
+        ;; Loader may call resolve/reject immediately (sync) or later (async)
+        (condition-case err
+            (let ((result (funcall loader-fn resolve reject)))
+              ;; If loader returns a process, store it for cleanup
+              (when (processp result)
+                (plist-put new-entry :process result)))
+          (error
+           ;; Loader threw an error - call reject
+           (funcall reject (error-message-string err))))
+        ;; Return pending state (or current state if resolve was called synchronously)
+        (list :status (plist-get new-entry :status)
+              :data (plist-get new-entry :data)
+              :error (plist-get new-entry :error))))))
+
+(defun vui--cleanup-instance-asyncs (instance)
+  "Cancel all pending async processes for INSTANCE."
+  (let ((cache (vui-instance-asyncs instance)))
+    (when cache
+      (maphash (lambda (_id entry)
+                 (let ((proc (plist-get entry :process)))
+                   (when (and proc (process-live-p proc))
+                     (delete-process proc))))
+               cache)
+      (clrhash cache))))
+
 (defun vui--save-window-starts (buffer)
   "Save window-start line numbers for all windows showing BUFFER.
 Returns alist of (WINDOW . LINE-NUMBER)."
@@ -1535,7 +1681,11 @@ WINDOW-INFO is alist of (WINDOW . LINE-NUMBER)."
           ;; Remove only widget overlays, preserve others (like hl-line)
           (vui--remove-widget-overlays)
           (erase-buffer)
-          (vui--render-instance instance)
+          ;; Set rendering flag to prevent nested re-renders
+          (setq vui--rendering-p t)
+          (unwind-protect
+              (vui--render-instance instance)
+            (setq vui--rendering-p nil))
           (widget-setup)
           (use-local-map widget-keymap)
           ;; Restore cursor position
@@ -1681,6 +1831,7 @@ INSTANCE is the component instance."
          (vui--ref-index 0)       ; Reset ref counter for this component
          (vui--callback-index 0)  ; Reset callback counter for this component
          (vui--memo-index 0)      ; Reset memo counter for this component
+         (vui--async-index 0)     ; Reset async counter for this component
          (old-children (vui-instance-children instance))
          (def (vui-instance-def instance))
          (component-name (vui-component-def-name def))
@@ -1756,8 +1907,9 @@ INSTANCE is the component instance."
   (vui--with-debug-indent
    (dolist (child (vui-instance-children instance))
      (vui--call-unmount-recursive child)))
-  ;; Clean up effects
+  ;; Clean up effects and async timers
   (vui--cleanup-instance-effects instance)
+  (vui--cleanup-instance-asyncs instance)
   ;; Then call on-unmount hook (with error handling)
   (let* ((def (vui-instance-def instance))
          (component-name (vui-component-def-name def))
@@ -2438,7 +2590,11 @@ Returns the root instance."
         ;; Store root instance for state updates
         (setq-local vui--root-instance instance)
         (let ((vui--root-instance instance))
-          (vui--render-instance instance))
+          ;; Set rendering flag to prevent nested re-renders from sync resolve
+          (setq vui--rendering-p t)
+          (unwind-protect
+              (vui--render-instance instance)
+            (setq vui--rendering-p nil)))
         ;; widget-setup installs before-change-functions that prevent
         ;; editing outside of editable fields - no need for buffer-read-only
         (widget-setup)

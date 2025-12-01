@@ -283,6 +283,193 @@ Use =use-memo= when:
     (vui-table :rows sorted)))
 #+end_src
 
+* Async Data Loading — =use-async=
+
+=use-async= provides async data loading with loading/error states and caching.
+It uses a callback-based API (like JavaScript Promises) to support both
+synchronous and truly asynchronous operations.
+
+** How It Works
+
+The loader function receives two callbacks: =resolve= and =reject=. Call =resolve=
+with data on success, or =reject= with an error message on failure.
+
+#+begin_src text
+Render 1: use-async called → loader receives (resolve, reject)
+          → returns (:status pending)
+          → component renders with "Loading..."
+
+[Later - sync or async]
+
+Loader calls: (funcall resolve data)
+            → stores result in cache
+            → triggers re-render
+
+Render 2: use-async called → returns (:status ready :data ...)
+          → component renders with data
+#+end_src
+
+** Basic Usage
+
+#+begin_src elisp
+(defcomponent user-data (user-id)
+  :render
+  (let ((result (use-async user-id
+                  (lambda (resolve _reject)
+                    (funcall resolve (fetch-user-data user-id))))))
+    (pcase (plist-get result :status)
+      ('pending (vui-text "Loading..."))
+      ('error (vui-text (format "Error: %s" (plist-get result :error))))
+      ('ready (vui-text (format "User: %s" (plist-get result :data)))))))
+#+end_src
+
+** Return Value
+
+=use-async= returns a plist with:
+
+| Key       | Description                                    |
+|-----------+------------------------------------------------|
+| =:status= | One of: =pending=, =ready=, or =error=         |
+| =:data=   | The loaded data (when status is =ready=)       |
+| =:error=  | Error message (when status is =error=)         |
+
+** Key-Based Caching
+
+The first argument is a cache key. Results are cached and reused for the same key:
+
+#+begin_src elisp
+;; First render with user-id=1: loads data
+;; Re-render with user-id=1: returns cached result instantly
+;; Render with user-id=2: loads new data (different key)
+(use-async user-id
+  (lambda (resolve _reject)
+    (funcall resolve (fetch-user user-id))))
+#+end_src
+
+When the key changes, a new async load is triggered automatically.
+
+** Error Handling
+
+You can report errors in two ways:
+
+1. Call =reject= with an error message
+2. Signal an error (automatically caught and converted to reject)
+
+#+begin_src elisp
+(defcomponent with-error-handling ()
+  :render
+  (let ((result (use-async 'data
+                  (lambda (resolve reject)
+                    (if (not connected)
+                        (funcall reject "Network unavailable")
+                      (funcall resolve (fetch-data)))))))
+    (pcase (plist-get result :status)
+      ('error
+       (vui-fragment
+        (vui-text (format "Failed: %s" (plist-get result :error)))
+        (vui-newline)
+        (vui-button "Retry"
+                    :on-click (lambda () (vui-set-state :retry (random))))))
+      ('pending (vui-text "Loading..."))
+      ('ready (render-data (plist-get result :data))))))
+#+end_src
+
+** Truly Non-Blocking with make-process
+
+For external commands that may take time, use =make-process= with a sentinel:
+
+#+begin_src elisp
+(defcomponent balance-viewer ()
+  :render
+  (let ((result (use-async 'balance
+                  (lambda (resolve reject)
+                    (let ((output-buffer (generate-new-buffer " *hledger*")))
+                      (make-process
+                       :name "hledger-balance"
+                       :command '("hledger" "balance" "-O" "csv")
+                       :buffer output-buffer
+                       :connection-type 'pipe  ; Avoid terminal/pager issues
+                       :sentinel
+                       (lambda (proc _event)
+                         ;; Only handle when process actually finishes
+                         (when (memq (process-status proc) '(exit signal))
+                           (if (eq 0 (process-exit-status proc))
+                               (funcall resolve
+                                        (with-current-buffer output-buffer
+                                          (prog1 (buffer-string)
+                                            (kill-buffer))))
+                             (progn
+                               (kill-buffer output-buffer)
+                               (funcall reject "hledger failed"))))))))))))
+    (pcase (plist-get result :status)
+      ('pending (vui-text "Loading balance..."))
+      ('error (vui-text (format "Error: %s" (plist-get result :error))))
+      ('ready (vui-text (plist-get result :data))))))
+#+end_src
+
+The process runs asynchronously - Emacs remains responsive while waiting.
+
+** Multiple Async Calls
+
+You can have multiple =use-async= calls in a component, each with its own key:
+
+#+begin_src elisp
+(defcomponent dashboard ()
+  :render
+  (let ((users (use-async 'users
+                 (lambda (resolve _reject) (funcall resolve (fetch-users)))))
+        (stats (use-async 'stats
+                 (lambda (resolve _reject) (funcall resolve (fetch-stats)))))
+        (config (use-async 'config
+                  (lambda (resolve _reject) (funcall resolve (load-config))))))
+
+    ;; Show overall loading state
+    (if (seq-some (lambda (r) (eq (plist-get r :status) 'pending))
+                  (list users stats config))
+        (vui-text "Loading dashboard...")
+
+      ;; All loaded
+      (vui-fragment
+       (render-users (plist-get users :data))
+       (render-stats (plist-get stats :data))
+       (render-config (plist-get config :data))))))
+#+end_src
+
+** Preloading Data
+
+Since =use-async= caches by key, you can preload data before it's needed:
+
+#+begin_src elisp
+(defcomponent tabbed-view ()
+  :state ((tab 'overview))
+  :render
+  (progn
+    ;; Preload data for other tabs while viewing current tab
+    (use-async 'details-data
+      (lambda (resolve _reject) (funcall resolve (fetch-details))))
+    (use-async 'history-data
+      (lambda (resolve _reject) (funcall resolve (fetch-history))))
+
+    ;; Render current tab - data may already be cached
+    (pcase tab
+      ('overview (render-overview))
+      ('details (render-details (use-async 'details-data ...)))
+      ('history (render-history (use-async 'history-data ...))))))
+#+end_src
+
+** When to Use
+
+=use-async= is ideal for:
+- Showing immediate "Loading..." feedback
+- Automatic caching of results (same key = cached result)
+- Clean loading/error state handling in UI
+- Truly non-blocking loads via =make-process=
+
+For synchronous loaders, calling =resolve= immediately still provides benefits:
+- Consistent API for all async operations
+- Automatic error handling (caught errors become reject)
+- Result caching across re-renders
+
 * Advanced: Custom Comparison
 
 Both =use-callback*= and =use-memo*= support custom comparison modes.
@@ -390,6 +577,7 @@ Include all values used in the effect/callback:
 | =use-ref=       | Mutable value without re-render      |
 | =use-callback=  | Stable function reference            |
 | =use-memo=      | Cache expensive computations         |
+| =use-async=     | Load data asynchronously with cache  |
 | =use-callback*= | use-callback with custom comparison  |
 | =use-memo*=     | use-memo with custom comparison      |
 

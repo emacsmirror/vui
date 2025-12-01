@@ -2223,4 +2223,174 @@ Buttons are widget.el push-buttons, so we use widget-apply."
               (expect (buffer-string) :to-equal "")))
         (kill-buffer "*test-debug7*")))))
 
+(describe "use-async"
+  (it "returns ready status when resolve called synchronously"
+    (let ((result nil))
+      (defcomponent async-test-sync ()
+        :render (progn
+                  (setq result (use-async 'test-key
+                                 (lambda (resolve _reject)
+                                   (funcall resolve "loaded data"))))
+                  (vui-text "test")))
+      (let ((instance (vui-mount (vui-component 'async-test-sync) "*test-async1*")))
+        (unwind-protect
+            (progn
+              ;; Should be ready immediately since resolve was called synchronously
+              (expect (plist-get result :status) :to-equal 'ready)
+              (expect (plist-get result :data) :to-equal "loaded data"))
+          (kill-buffer "*test-async1*")))))
+
+  (it "returns pending then ready for async resolve"
+    (let ((result nil)
+          (render-count 0)
+          (stored-resolve nil))
+      (defcomponent async-test-ready ()
+        :render (progn
+                  (setq render-count (1+ render-count))
+                  (setq result (use-async 'test-key
+                                 (lambda (resolve _reject)
+                                   ;; Store resolve to call later (simulate async)
+                                   (setq stored-resolve resolve))))
+                  (vui-text "test")))
+      (let ((instance (vui-mount (vui-component 'async-test-ready) "*test-async2*")))
+        (unwind-protect
+            (progn
+              ;; Initially pending
+              (expect (plist-get result :status) :to-equal 'pending)
+              (expect render-count :to-equal 1)
+              ;; Call resolve asynchronously
+              (funcall stored-resolve "loaded data")
+              ;; Should be ready now with data
+              (expect (plist-get result :status) :to-equal 'ready)
+              (expect (plist-get result :data) :to-equal "loaded data")
+              (expect render-count :to-equal 2))
+          (kill-buffer "*test-async2*")))))
+
+  (it "returns cached result on re-render with same key"
+    (let ((load-count 0)
+          (result nil))
+      (defcomponent async-test-cache ()
+        :state ((counter 0))
+        :render (progn
+                  (setq result (use-async 'test-key
+                                 (lambda (resolve _reject)
+                                   (setq load-count (1+ load-count))
+                                   (funcall resolve "data"))))
+                  (vui-text (number-to-string counter))))
+      (let ((instance (vui-mount (vui-component 'async-test-cache) "*test-async3*")))
+        (unwind-protect
+            (progn
+              ;; First load should complete immediately (sync resolve)
+              (expect load-count :to-equal 1)
+              (expect (plist-get result :status) :to-equal 'ready)
+              ;; Re-render by changing state
+              (setf (vui-instance-state instance)
+                    (plist-put (vui-instance-state instance) :counter 1))
+              (vui--rerender-instance instance)
+              ;; Should NOT trigger another load (cached)
+              (expect load-count :to-equal 1)
+              (expect (plist-get result :status) :to-equal 'ready))
+          (kill-buffer "*test-async3*")))))
+
+  (it "reloads when key changes"
+    (let ((load-count 0)
+          (key-value 1)
+          (result nil))
+      (defcomponent async-test-key-change ()
+        :render (progn
+                  (setq result (use-async (list 'data key-value)
+                                 (lambda (resolve _reject)
+                                   (setq load-count (1+ load-count))
+                                   (funcall resolve (format "data-%d" key-value)))))
+                  (vui-text "test")))
+      (let ((instance (vui-mount (vui-component 'async-test-key-change) "*test-async4*")))
+        (unwind-protect
+            (progn
+              ;; First load completes immediately
+              (expect load-count :to-equal 1)
+              (expect (plist-get result :data) :to-equal "data-1")
+              ;; Change key and re-render
+              (setq key-value 2)
+              (vui--rerender-instance instance)
+              ;; Should have loaded new data
+              (expect load-count :to-equal 2)
+              (expect (plist-get result :data) :to-equal "data-2"))
+          (kill-buffer "*test-async4*")))))
+
+  (it "handles reject callback"
+    (let ((result nil))
+      (defcomponent async-test-reject ()
+        :render (progn
+                  (setq result (use-async 'test-key
+                                 (lambda (_resolve reject)
+                                   (funcall reject "Something went wrong"))))
+                  (vui-text "test")))
+      (let ((instance (vui-mount (vui-component 'async-test-reject) "*test-async5*")))
+        (unwind-protect
+            (progn
+              (expect (plist-get result :status) :to-equal 'error)
+              (expect (plist-get result :error) :to-equal "Something went wrong"))
+          (kill-buffer "*test-async5*")))))
+
+  (it "handles errors thrown in loader"
+    (let ((result nil))
+      (defcomponent async-test-error ()
+        :render (progn
+                  (setq result (use-async 'test-key
+                                 (lambda (_resolve _reject)
+                                   (error "Test error"))))
+                  (vui-text "test")))
+      (let ((instance (vui-mount (vui-component 'async-test-error) "*test-async6*")))
+        (unwind-protect
+            (progn
+              (expect (plist-get result :status) :to-equal 'error)
+              (expect (plist-get result :error) :to-match "Test error"))
+          (kill-buffer "*test-async6*")))))
+
+  (it "supports multiple async calls in same component"
+    (let ((result1 nil)
+          (result2 nil))
+      (defcomponent async-test-multiple ()
+        :render (progn
+                  (setq result1 (use-async 'key1
+                                  (lambda (resolve _reject) (funcall resolve "data1"))))
+                  (setq result2 (use-async 'key2
+                                  (lambda (resolve _reject) (funcall resolve "data2"))))
+                  (vui-text "test")))
+      (let ((instance (vui-mount (vui-component 'async-test-multiple) "*test-async7*")))
+        (unwind-protect
+            (progn
+              (expect (plist-get result1 :status) :to-equal 'ready)
+              (expect (plist-get result1 :data) :to-equal "data1")
+              (expect (plist-get result2 :status) :to-equal 'ready)
+              (expect (plist-get result2 :data) :to-equal "data2"))
+          (kill-buffer "*test-async7*")))))
+
+  (it "supports truly async operations with make-process"
+    (let ((result nil))
+      (defcomponent async-test-process ()
+        :render (progn
+                  (setq result (use-async 'echo-test
+                                 (lambda (resolve reject)
+                                   (make-process
+                                    :name "test-echo"
+                                    :command '("echo" "hello from process")
+                                    :buffer nil
+                                    :sentinel (lambda (proc _event)
+                                                (if (eq 0 (process-exit-status proc))
+                                                    (funcall resolve "process completed")
+                                                  (funcall reject "process failed")))))))
+                  (vui-text "test")))
+      (let ((instance (vui-mount (vui-component 'async-test-process) "*test-async8*")))
+        (unwind-protect
+            (progn
+              ;; Initially pending (process not finished yet)
+              (expect (plist-get result :status) :to-equal 'pending)
+              ;; Wait for process to complete
+              (sleep-for 0.2)
+              ;; Should be ready now
+              (expect (plist-get result :status) :to-equal 'ready)
+              (expect (plist-get result :data) :to-equal "process completed"))
+          (kill-buffer "*test-async8*"))))))
+
 ;;; vui-test.el ends here
