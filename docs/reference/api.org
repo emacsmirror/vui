@@ -488,10 +488,23 @@ Set state KEY to VALUE and schedule re-render.
 
 Must be called from within a component context (event handler, lifecycle hook).
 
+If VALUE is a function, it is called with the current value and the result
+is used as the new value. This is essential for async callbacks where
+captured variables may be stale.
+
 #+begin_src elisp
+;; Direct value
 (vui-button "Increment"
             :on-click (lambda ()
                         (vui-set-state :count (1+ count))))
+
+;; Functional update (for async callbacks)
+(run-with-timer 1 1
+  (vui-with-async-context
+    (vui-set-state :count #'1+)))  ; Gets current value, returns incremented
+
+;; Lambda for complex updates
+(vui-set-state :items (lambda (old) (cons new-item old)))
 #+end_src
 
 ** vui-batch
@@ -517,6 +530,41 @@ Batch multiple state updates into a single re-render.
 #+end_src
 
 Force immediate re-render, bypassing idle timers.
+
+** vui-with-async-context
+
+#+begin_src elisp
+(vui-with-async-context BODY...) -> function
+#+end_src
+
+Capture component context for use in async callbacks. Returns a function that,
+when called, restores the context and executes BODY.
+
+Use this when you need =vui-set-state= in:
+- Timer callbacks (=run-with-timer=, =run-with-idle-timer=)
+- Emacs hook functions
+- Process sentinels (when not using =use-async=)
+- Any callback that runs asynchronously
+
+#+begin_src elisp
+;; Timer example - use functional update for state-based values
+(use-effect ()
+  (let ((timer (run-with-timer 1 1
+                 (vui-with-async-context
+                   (vui-set-state :seconds #'1+)))))
+    (lambda () (cancel-timer timer))))
+
+;; Hook example - (frame-width) is called fresh, no capture issue
+(use-effect ()
+  (let ((handler (vui-with-async-context
+                   (vui-set-state :width (frame-width)))))
+    (add-hook 'window-size-change-functions handler)
+    (lambda ()
+      (remove-hook 'window-size-change-functions handler))))
+#+end_src
+
+*Note:* You do NOT need this for widget callbacks (buttons, fields) or
+=use-async= loaders — those handle context automatically.
 
 * Hooks
 

@@ -55,10 +55,11 @@ Return a function from the effect body to run cleanup:
   :render
   (progn
     (use-effect ()
-      ;; Setup: start timer
+      ;; Setup: start timer (use vui-with-async-context for callback)
+      ;; Use #'1+ functional update to avoid stale closure capture
       (let ((timer (run-with-timer 1 1
-                                   (lambda ()
-                                     (vui-set-state :elapsed (1+ elapsed))))))
+                     (vui-with-async-context
+                       (vui-set-state :elapsed #'1+)))))
         ;; Cleanup: cancel timer
         (lambda ()
           (cancel-timer timer))))
@@ -100,7 +101,8 @@ Cleanup runs:
   :render
   (progn
     (use-effect ()
-      (let ((handler (lambda ()
+      ;; Use vui-with-async-context since hook runs asynchronously
+      (let ((handler (vui-with-async-context
                        (vui-set-state :width (frame-width)))))
         (add-hook 'window-size-change-functions handler)
         ;; Cleanup
@@ -185,9 +187,11 @@ re-renders when changed.
   (let ((timer-ref (use-ref nil)))
     (use-effect ()
       ;; Store timer in ref for later cleanup
+      ;; Use #'1+ functional update to get current value
       (setcar timer-ref
-              (run-with-timer 1 1 (lambda ()
-                                    (vui-set-state :count (1+ count)))))
+              (run-with-timer 1 1
+                (vui-with-async-context
+                  (vui-set-state :count #'1+))))
       (lambda ()
         (when (car timer-ref)
           (cancel-timer (car timer-ref)))))
@@ -538,6 +542,137 @@ caching, triggering re-renders), while the underlying async mechanism handles
 the *actual async execution*. This separation lets you choose the right tool
 for each job.
 
+* Async Context — =vui-with-async-context=
+
+When calling =vui-set-state= from asynchronous callbacks like timers, process
+sentinels, or hooks, you need to restore the component context. The
+=vui-with-async-context= macro captures the current context and returns a
+function that restores it when called.
+
+** The Problem
+
+#+begin_src elisp
+;; THIS WON'T WORK - timer runs outside component context
+(defcomponent broken-timer ()
+  :state ((seconds 0))
+  :render
+  (progn
+    (use-effect ()
+      (let ((timer (run-with-timer 1 1
+                     (lambda ()
+                       ;; ERROR: vui-set-state called outside component context
+                       (vui-set-state :seconds (1+ seconds))))))
+        (lambda () (cancel-timer timer))))
+    (vui-text (format "Elapsed: %d" seconds))))
+#+end_src
+
+The timer callback runs later, outside of any component rendering context.
+When it tries to call =vui-set-state=, the component context isn't available.
+
+** The Solution
+
+#+begin_src elisp
+(defcomponent working-timer ()
+  :state ((seconds 0))
+  :render
+  (progn
+    (use-effect ()
+      (let ((timer (run-with-timer 1 1
+                     (vui-with-async-context
+                       ;; Use functional update to get current value
+                       (vui-set-state :seconds #'1+)))))
+        (lambda () (cancel-timer timer))))
+    (vui-text (format "Elapsed: %d" seconds))))
+#+end_src
+
+*Note:* We use =#'1+= (functional update) because =(1+ seconds)= would capture
+=seconds= at definition time. With functional update, =vui-set-state= passes
+the current value to the function.
+
+=vui-with-async-context= captures:
+- The current buffer
+- The component instance
+- The root instance
+
+When the returned function is called, it:
+1. Checks if the buffer is still alive
+2. Switches to that buffer
+3. Restores the component context
+4. Executes the body
+
+** Common Use Cases
+
+*** Timers
+
+#+begin_src elisp
+(defcomponent clock ()
+  :state ((time (current-time-string)))
+  :render
+  (progn
+    (use-effect ()
+      (let ((timer (run-with-timer 1 1
+                     (vui-with-async-context
+                       ;; current-time-string is called fresh each tick
+                       (vui-set-state :time (current-time-string))))))
+        (lambda () (cancel-timer timer))))
+    (vui-text time)))
+#+end_src
+
+Note: Here =(current-time-string)= works because it's a function call that
+executes when the callback runs, not a captured variable. For state-based
+updates, use functional form: =(vui-set-state :count #'1+)=
+
+*** Emacs Hooks
+
+#+begin_src elisp
+(defcomponent frame-watcher ()
+  :state ((width (frame-width)))
+  :render
+  (progn
+    (use-effect ()
+      (let ((handler (vui-with-async-context
+                       (vui-set-state :width (frame-width)))))
+        (add-hook 'window-size-change-functions handler)
+        (lambda ()
+          (remove-hook 'window-size-change-functions handler))))
+    (vui-text (format "Width: %d" width))))
+#+end_src
+
+*** Process Sentinels (Alternative to use-async)
+
+#+begin_src elisp
+(defcomponent command-runner ()
+  :state ((output nil) (running nil))
+  :render
+  (let ((start-process
+         (lambda ()
+           (vui-set-state :running t)
+           (make-process
+            :name "my-cmd"
+            :command '("echo" "hello")
+            :sentinel
+            (vui-with-async-context
+              (vui-set-state :running nil)
+              (vui-set-state :output "Done"))))))
+    (vui-fragment
+     (vui-button "Run" :on-click start-process)
+     (when output (vui-text output)))))
+#+end_src
+
+** When to Use
+
+Use =vui-with-async-context= when you need =vui-set-state= in:
+- =run-with-timer= callbacks
+- =run-with-idle-timer= callbacks
+- Emacs hooks (=post-command-hook=, =window-size-change-functions=, etc.)
+- Process sentinels (when not using =use-async=)
+- Any other callback that runs asynchronously
+
+You do NOT need it for:
+- Widget callbacks (buttons, fields) — these handle context automatically
+- =use-async= loaders — =resolve=/=reject= handle context automatically
+- Code directly in =:render= — already in component context
+
 * Advanced: Custom Comparison
 
 Both =use-callback*= and =use-memo*= support custom comparison modes.
@@ -639,15 +774,16 @@ Include all values used in the effect/callback:
 
 * Summary
 
-| Hook            | Purpose                              |
-|-----------------+--------------------------------------|
-| =use-effect=    | Run side effects after render        |
-| =use-ref=       | Mutable value without re-render      |
-| =use-callback=  | Stable function reference            |
-| =use-memo=      | Cache expensive computations         |
-| =use-async=     | Load data asynchronously with cache  |
-| =use-callback*= | use-callback with custom comparison  |
-| =use-memo*=     | use-memo with custom comparison      |
+| Hook/Macro                 | Purpose                              |
+|----------------------------+--------------------------------------|
+| =use-effect=               | Run side effects after render        |
+| =use-ref=                  | Mutable value without re-render      |
+| =use-callback=             | Stable function reference            |
+| =use-memo=                 | Cache expensive computations         |
+| =use-async=                | Load data asynchronously with cache  |
+| =use-callback*=            | use-callback with custom comparison  |
+| =use-memo*=                | use-memo with custom comparison      |
+| =vui-with-async-context=   | Capture context for async callbacks  |
 
 * Try It Yourself
 

@@ -1088,17 +1088,64 @@ or the nearest ancestor that has KEY, or INSTANCE as fallback."
   "Set state KEY to VALUE in the appropriate component and re-render.
 Searches for the component that owns KEY, starting from the current
 component and going up the parent chain.
-Must be called from within a component's event handler."
+Must be called from within a component's event handler.
+
+If VALUE is a function, it is called with the current value and the
+result is used as the new value.  This is useful in async callbacks
+where the captured value may be stale:
+
+  ;; Instead of (1+ count) which captures count at definition time:
+  (vui-set-state :count #\\='1+)
+
+  ;; Or with a lambda for more complex updates:
+  (vui-set-state :items (lambda (old) (cons new-item old)))"
   (unless vui--current-instance
     (error "vui-set-state called outside of component context"))
-  (let ((target (vui--find-state-owner vui--current-instance key)))
+  (let* ((target (vui--find-state-owner vui--current-instance key))
+         (current-state (vui-instance-state target))
+         (current-value (plist-get current-state key))
+         (new-value (if (functionp value)
+                        (funcall value current-value)
+                      value)))
     (vui--debug-log 'state-change "<%s> state %s = %S"
                     (vui-component-def-name (vui-instance-def target))
-                    key value)
+                    key new-value)
     (setf (vui-instance-state target)
-          (plist-put (vui-instance-state target) key value)))
+          (plist-put current-state key new-value)))
   ;; Schedule re-render (respects batching)
   (vui--schedule-render))
+
+(defmacro vui-with-async-context (&rest body)
+  "Capture current component context for use in async callbacks.
+Returns a function that, when called, restores the component context
+and executes BODY.  Use this when you need to call `vui-set-state'
+from timers, process sentinels, or other async callbacks.
+
+Example:
+  (run-with-timer 1 1
+    (vui-with-async-context
+      (vui-set-state :count #'1+)))  ; Use functional update!
+
+The macro captures:
+- The current buffer
+- The current component instance
+- The root instance
+
+When the returned function is called, it checks if the buffer is still
+alive, switches to it, and restores the component context before
+executing BODY."
+  (let ((buf (make-symbol "buf"))
+        (instance (make-symbol "instance"))
+        (root (make-symbol "root")))
+    `(let ((,buf (current-buffer))
+           (,instance vui--current-instance)
+           (,root vui--root-instance))
+       (lambda ()
+         (when (buffer-live-p ,buf)
+           (with-current-buffer ,buf
+             (let ((vui--current-instance ,instance)
+                   (vui--root-instance ,root))
+               ,@body)))))))
 
 (defun vui--schedule-render ()
   "Schedule a re-render of the root instance.

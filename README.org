@@ -82,15 +82,12 @@ updates the count and re-renders.
 
 #+begin_src elisp
 (defcomponent timer ()
-  :state ((seconds 0)
-          (timer nil))
+  :state ((seconds 0))
   :on-mount
-  (vui-set-state :timer
-                 (run-with-timer 1 1
-                                 (lambda ()
-                                   (vui-set-state :seconds (1+ seconds)))))
-  :on-unmount
-  (when timer (cancel-timer timer))
+  (let ((timer (run-with-timer 1 1
+                 (vui-with-async-context
+                   (vui-set-state :seconds #'1+)))))
+    (lambda () (cancel-timer timer)))
 
   :render
   (vui-text (format "Elapsed: %d seconds" seconds)))
