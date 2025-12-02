@@ -1249,15 +1249,15 @@ Example:
         (progn ,@body)
       (cl-decf vui--batch-depth)
       (when (and (= vui--batch-depth 0)
-                 vui--render-pending-p
-                 vui--batch-root)
-        ;; End of outermost batch - schedule deferred re-render
-        ;; Using deferred rendering avoids re-rendering while still
-        ;; inside a widget callback, which can cause issues
-        (setq vui--render-pending-p nil)
-        (if vui-render-delay
-            (vui--schedule-deferred-render-for vui--batch-root)
-          (vui--rerender-instance vui--batch-root))))))
+             vui--render-pending-p
+             vui--batch-root)
+       ;; End of outermost batch - schedule deferred re-render
+       ;; Using deferred rendering avoids re-rendering while still
+       ;; inside a widget callback, which can cause issues
+       (setq vui--render-pending-p nil)
+       (if vui-render-delay
+           (vui--schedule-deferred-render-for vui--batch-root)
+         (vui--rerender-instance vui--batch-root))))))
 
 (defun vui-flush-sync ()
   "Force immediate re-render, bypassing any pending timers.
@@ -2458,7 +2458,7 @@ Handles :truncate and overflow:
                                       (choice (completing-read prompt options nil t nil nil value)))
                                  (when wrapped-change
                                    (funcall wrapped-change choice))))
-                     (format "[%s]" (or value "Select...")))))
+                     (format "%s" (or value "Select...")))))
 
    ;; Horizontal stack
    ((vui-vnode-hstack-p vnode)
