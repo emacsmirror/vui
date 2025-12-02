@@ -83,8 +83,9 @@ Cleanup runs:
     (use-effect (user-id)
       ;; Fetch when user-id changes
       (vui-set-state :loading t)
+      ;; Use vui-async-callback since fetch-user calls back with data
       (fetch-user user-id
-                  (lambda (data)
+                  (vui-async-callback (data)
                     (vui-set-state :user data)
                     (vui-set-state :loading nil))))
 
@@ -651,9 +652,11 @@ updates, use functional form: =(vui-set-state :count #'1+)=
             :name "my-cmd"
             :command '("echo" "hello")
             :sentinel
-            (vui-with-async-context
-              (vui-set-state :running nil)
-              (vui-set-state :output "Done"))))))
+            ;; Use vui-async-callback to receive proc and event
+            (vui-async-callback (proc _event)
+              (when (memq (process-status proc) '(exit signal))
+                (vui-set-state :running nil)
+                (vui-set-state :output "Done")))))))
     (vui-fragment
      (vui-button "Run" :on-click start-process)
      (when output (vui-text output)))))
@@ -665,13 +668,62 @@ Use =vui-with-async-context= when you need =vui-set-state= in:
 - =run-with-timer= callbacks
 - =run-with-idle-timer= callbacks
 - Emacs hooks (=post-command-hook=, =window-size-change-functions=, etc.)
-- Process sentinels (when not using =use-async=)
-- Any other callback that runs asynchronously
+- Any fire-and-forget callback
 
 You do NOT need it for:
 - Widget callbacks (buttons, fields) — these handle context automatically
 - =use-async= loaders — =resolve=/=reject= handle context automatically
 - Code directly in =:render= — already in component context
+
+* Async Callbacks with Arguments — =vui-async-callback=
+
+When an async operation passes data to your callback, use =vui-async-callback=
+instead of =vui-with-async-context=. It works the same way but accepts arguments.
+
+** Basic Usage
+
+#+begin_src elisp
+(use-effect ()
+  (fetch-data-async
+    (vui-async-callback (result)
+      (vui-set-state :data result))))
+#+end_src
+
+** Multiple Arguments
+
+#+begin_src elisp
+(use-effect ()
+  (my-api-call
+    (vui-async-callback (data status)
+      (vui-set-state :data data)
+      (vui-set-state :status status))))
+#+end_src
+
+** Process Sentinel with Output
+
+#+begin_src elisp
+(use-effect ()
+  (let ((buf (generate-new-buffer " *async*")))
+    (make-process
+     :name "my-cmd"
+     :buffer buf
+     :command '("echo" "hello")
+     :sentinel
+     (vui-async-callback (proc event)
+       (when (memq (process-status proc) '(exit signal))
+         (let ((output (with-current-buffer buf (buffer-string))))
+           (kill-buffer buf)
+           (vui-set-state :output output)))))))
+#+end_src
+
+** Choosing Between the Macros
+
+| Macro                    | Use When                              |
+|--------------------------+---------------------------------------|
+| =vui-with-async-context= | Callback doesn't receive data         |
+|                          | (timers, hooks)                       |
+| =vui-async-callback=     | Callback receives data from async op  |
+|                          | (API responses, process output)       |
 
 * Advanced: Custom Comparison
 

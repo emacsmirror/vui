@@ -1148,6 +1148,40 @@ executing BODY."
                    (vui--root-instance ,root))
                ,@body)))))))
 
+(defmacro vui-async-callback (args &rest body)
+  "Create an async callback that captures component context and accepts ARGS.
+Like `vui-with-async-context', but the returned function accepts
+arguments which are bound when executing BODY.
+
+ARGS is a list of parameter names (like a lambda arglist).
+BODY is executed with component context restored and ARGS bound.
+
+Use this when an async operation needs to pass data to your callback.
+Create the callback inside component context (e.g., in use-effect),
+then the async operation calls it later with results.
+
+Example:
+  (use-effect ()
+    (my-fetch-data
+      (vui-async-callback (result)
+        (vui-set-state :data result))))
+
+Compare with `vui-with-async-context':
+- `vui-with-async-context' - for fire-and-forget callbacks (timers)
+- `vui-async-callback' - when callback receives data from async operation"
+  (let ((buf (make-symbol "buf"))
+        (instance (make-symbol "instance"))
+        (root (make-symbol "root")))
+    `(let ((,buf (current-buffer))
+           (,instance vui--current-instance)
+           (,root vui--root-instance))
+       (lambda ,args
+         (when (buffer-live-p ,buf)
+           (with-current-buffer ,buf
+             (let ((vui--current-instance ,instance)
+                   (vui--root-instance ,root))
+               ,@body)))))))
+
 (defun vui--schedule-render ()
   "Schedule a re-render of the root instance.
 If inside a vui-batch, the render is deferred until batch completes.

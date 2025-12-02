@@ -566,6 +566,40 @@ Use this when you need =vui-set-state= in:
 *Note:* You do NOT need this for widget callbacks (buttons, fields) or
 =use-async= loaders — those handle context automatically.
 
+** vui-async-callback
+
+#+begin_src elisp
+(vui-async-callback (ARGS...) BODY...) -> function
+#+end_src
+
+Create an async callback that captures component context and accepts arguments.
+Like =vui-with-async-context=, but the returned function accepts ARGS which are
+bound when executing BODY.
+
+Use this when an async operation passes data to your callback:
+- API responses
+- Process output
+- Any async operation that returns a value
+
+#+begin_src elisp
+;; Fetch data and set state with the result
+(use-effect ()
+  (fetch-data-async
+    (vui-async-callback (result)
+      (vui-set-state :data result))))
+
+;; Multiple arguments
+(use-effect ()
+  (my-api-call
+    (vui-async-callback (data status)
+      (vui-set-state :data data)
+      (vui-set-state :status status))))
+#+end_src
+
+*Compare with =vui-with-async-context=:*
+- =vui-with-async-context= — fire-and-forget callbacks (timers, hooks)
+- =vui-async-callback= — callbacks that receive data from async operations
+
 * Hooks
 
 ** use-effect

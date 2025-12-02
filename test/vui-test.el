@@ -849,7 +849,69 @@ Buttons are widget.el push-buttons, so we use widget-apply."
             (vui--rerender-instance instance)
             ;; Effect should have set doubled to 10
             (expect (plist-get (vui-instance-state instance) :doubled) :to-equal 10))
-        (kill-buffer "*test-effect-state*")))))
+        (kill-buffer "*test-effect-state*"))))
+
+  (it "fails to set state from timer callback with arguments (demonstrates need for vui-async-callback)"
+    ;; This test demonstrates the problem: when an async callback receives
+    ;; arguments, we can't use vui-with-async-context because it's evaluated
+    ;; when the callback runs (context already nil), not when created.
+    (let ((error-occurred nil)
+          (result-value nil))
+      (defcomponent async-callback-problem ()
+        :state ((data nil))
+        :render (progn
+                  (use-effect ()
+                    ;; Start async operation that will call back with data
+                    (run-with-timer
+                     0.01 nil
+                     (lambda ()
+                       ;; This is called OUTSIDE component context
+                       ;; We have result data: "async-result"
+                       ;; We need to pass it to vui-set-state
+                       ;; But vui-with-async-context is evaluated HERE
+                       ;; when vui--current-instance is nil!
+                       (condition-case err
+                           (let ((result "async-result"))
+                             (funcall (vui-with-async-context
+                                        (vui-set-state :data result))))
+                         (error (setq error-occurred (error-message-string err)))))))
+                  (vui-text (or data "loading"))))
+      (let ((instance (vui-mount (vui-component 'async-callback-problem) "*test-async-cb*")))
+        (unwind-protect
+            (progn
+              ;; Wait for timer to fire
+              (sleep-for 0.05)
+              ;; Error should have occurred because vui-with-async-context
+              ;; was evaluated outside component context
+              (expect error-occurred :to-match "outside of component context"))
+          (kill-buffer "*test-async-cb*"))))))
+
+(describe "vui-async-callback"
+  (it "allows setting state from async callback with arguments"
+    (let ((result-value nil))
+      (defcomponent async-callback-test ()
+        :state ((data nil))
+        :render (progn
+                  (use-effect ()
+                    ;; Create callback while context exists, call later with args
+                    (let ((callback (vui-async-callback (result)
+                                      (vui-set-state :data result))))
+                      (run-with-timer 0.01 nil
+                        (lambda ()
+                          ;; Callback receives data and sets state
+                          (funcall callback "async-result")))))
+                  (setq result-value data)
+                  (vui-text (or data "loading"))))
+      (let ((instance (vui-mount (vui-component 'async-callback-test) "*test-async-cb2*")))
+        (unwind-protect
+            (progn
+              ;; Initially loading
+              (expect result-value :to-be nil)
+              ;; Wait for timer to fire
+              (sleep-for 0.05)
+              ;; State should have been updated
+              (expect (plist-get (vui-instance-state instance) :data) :to-equal "async-result"))
+          (kill-buffer "*test-async-cb2*"))))))
 
 (describe "use-ref"
   (it "creates a ref with initial value"
