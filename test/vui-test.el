@@ -131,7 +131,80 @@ Buttons are widget.el push-buttons, so we use widget-apply."
 
   (it "accepts key property"
     (let ((node (vui-field :key "field-1")))
-      (expect (vui-vnode-key node) :to-equal "field-1"))))
+      (expect (vui-vnode-key node) :to-equal "field-1")))
+
+  (it "triggers on-submit callback on RET"
+    (let ((submitted-value nil))
+      (defcomponent submit-test ()
+        :render
+        (vui-field :key 'test-field
+                   :value "initial"
+                   :on-submit (lambda (v) (setq submitted-value v))))
+      (let ((instance (vui-mount (vui-component 'submit-test) "*test-submit*")))
+        (unwind-protect
+            (with-current-buffer "*test-submit*"
+              ;; Navigate to the field widget
+              (goto-char (point-min))
+              (widget-forward 1)
+              ;; Simulate RET by applying the widget action
+              (let ((widget (widget-at (point))))
+                (expect widget :to-be-truthy)
+                (widget-apply widget :action))
+              ;; on-submit should have been called with the field value
+              (expect submitted-value :to-equal "initial"))
+          (kill-buffer "*test-submit*"))))))
+
+(describe "vui-field-value"
+  (it "retrieves field value by key"
+    (defcomponent field-value-test ()
+      :render
+      (vui-vstack
+        (vui-field :key 'my-input :value "hello world")))
+    (let ((instance (vui-mount (vui-component 'field-value-test) "*test-fv*")))
+      (unwind-protect
+          (with-current-buffer "*test-fv*"
+            (expect (vui-field-value 'my-input) :to-equal "hello world"))
+        (kill-buffer "*test-fv*"))))
+
+  (it "returns nil for non-existent key"
+    (defcomponent field-value-nil-test ()
+      :render
+      (vui-field :key 'existing :value "test"))
+    (let ((instance (vui-mount (vui-component 'field-value-nil-test) "*test-fv2*")))
+      (unwind-protect
+          (with-current-buffer "*test-fv2*"
+            (expect (vui-field-value 'non-existent) :to-be nil))
+        (kill-buffer "*test-fv2*"))))
+
+  (it "reads current edited value not initial value"
+    (defcomponent field-value-edit-test ()
+      :render
+      (vui-field :key 'editable :value "initial"))
+    (let ((instance (vui-mount (vui-component 'field-value-edit-test) "*test-fv3*")))
+      (unwind-protect
+          (with-current-buffer "*test-fv3*"
+            ;; Navigate to field and modify its content
+            (goto-char (point-min))
+            (widget-forward 1)
+            (let ((widget (widget-at (point))))
+              ;; Simulate user typing by setting widget value
+              (widget-value-set widget "modified")
+              ;; vui-field-value should return the modified value
+              (expect (vui-field-value 'editable) :to-equal "modified")))
+        (kill-buffer "*test-fv3*"))))
+
+  (it "works with multiple fields with symbol keys"
+    (defcomponent field-value-keys-test ()
+      :render
+      (vui-vstack
+        (vui-field :key 'first-key :value "first")
+        (vui-field :key 'second-key :value "second")))
+    (let ((instance (vui-mount (vui-component 'field-value-keys-test) "*test-fv4*")))
+      (unwind-protect
+          (with-current-buffer "*test-fv4*"
+            (expect (vui-field-value 'first-key) :to-equal "first")
+            (expect (vui-field-value 'second-key) :to-equal "second"))
+        (kill-buffer "*test-fv4*")))))
 
 (describe "vui-checkbox"
   (it "creates a checkbox vnode"
@@ -844,7 +917,102 @@ Buttons are widget.el push-buttons, so we use widget-apply."
             (vui--rerender-instance instance)
             ;; First child should preserve state, second should stay 0
             (expect (buffer-string) :to-equal "A:5B:0"))
-        (kill-buffer "*test-idx*")))))
+        (kill-buffer "*test-idx*"))))
+
+  (it "preserves state when items reordered by key"
+    ;; Define a child component with internal state
+    (defcomponent keyed-item (id)
+      :state ((clicks 0))
+      :render (vui-button (format "%s:%d" id clicks)
+                :on-click (lambda () (vui-set-state :clicks (1+ clicks)))))
+    ;; Parent component that renders a list with keys
+    (let ((items '("A" "B" "C")))
+      (defcomponent keyed-list ()
+        :render (apply #'vui-vstack
+                  (mapcar (lambda (id)
+                            (vui-component 'keyed-item :key id :id id))
+                          items)))
+      (let ((instance (vui-mount (vui-component 'keyed-list) "*test-keys*")))
+        (unwind-protect
+            (with-current-buffer "*test-keys*"
+              ;; Click first button (A) at point-min to increment its state
+              (vui-test--click-button-at (point-min))
+              ;; Force immediate render (vui-render-delay causes async render)
+              (vui-flush-sync)
+              ;; Verify A now shows clicks=1
+              (expect (buffer-string) :to-match "A:1")
+              ;; Reorder: move A to last position
+              (setq items '("B" "C" "A"))
+              (vui--rerender-instance instance)
+              ;; A should still have clicks=1 despite position change
+              (expect (buffer-string) :to-match "A:1")
+              ;; B and C should still have clicks=0
+              (expect (buffer-string) :to-match "B:0")
+              (expect (buffer-string) :to-match "C:0"))
+          (kill-buffer "*test-keys*"))))))
+
+(describe "cursor preservation"
+  (it "maintains cursor position on same widget after re-render"
+    (defcomponent cursor-test ()
+      :state ((label "initial"))
+      :render
+      (vui-vstack
+        (vui-field :key "field1" :value "first")
+        (vui-field :key "field2" :value "second")
+        (vui-button "Update" :on-click (lambda ()
+                                          (vui-set-state :label "changed")))))
+    (let ((instance (vui-mount (vui-component 'cursor-test) "*test-cursor*")))
+      (unwind-protect
+          (with-current-buffer "*test-cursor*"
+            ;; Move to second field widget
+            (goto-char (point-min))
+            (widget-forward 1)  ; first field
+            (widget-forward 1)  ; second field
+            (let ((pos-before (point)))
+              ;; Verify we're at a widget
+              (expect (widget-at (point)) :to-be-truthy)
+              ;; Trigger re-render via button click
+              (save-excursion
+                (goto-char (point-min))
+                (search-forward "[Update]")
+                (backward-char 8)  ; position at start of "[Update]"
+                (vui-test--click-button-at (point)))
+              ;; Cursor should still be at a widget (field)
+              (expect (widget-at (point)) :to-be-truthy)))
+        (kill-buffer "*test-cursor*"))))
+
+  (it "preserves cursor when content changes around widget"
+    (defcomponent cursor-content-test ()
+      :state ((prefix "short"))
+      :render
+      (vui-vstack
+        (vui-text prefix)
+        (vui-field :key "input" :value "test")
+        (vui-button "Toggle" :on-click
+          (lambda ()
+            (vui-set-state :prefix
+              (if (string= prefix "short")
+                  "this is a much longer prefix"
+                "short"))))))
+    (let ((instance (vui-mount (vui-component 'cursor-content-test) "*test-cursor2*")))
+      (unwind-protect
+          (with-current-buffer "*test-cursor2*"
+            ;; Navigate to the field
+            (goto-char (point-min))
+            (widget-forward 1)  ; to field
+            (let ((widget-before (widget-at (point))))
+              (expect widget-before :to-be-truthy)
+              ;; Change the prefix (content before widget changes length)
+              (save-excursion
+                (goto-char (point-min))
+                (search-forward "[Toggle]")
+                (backward-char 8)  ; position at start of "[Toggle]"
+                (vui-test--click-button-at (point)))
+              ;; Cursor should still be on a field widget
+              (let ((widget-after (widget-at (point))))
+                (expect widget-after :to-be-truthy)
+                (expect (widget-type widget-after) :to-equal 'editable-field))))
+        (kill-buffer "*test-cursor2*")))))
 
 (describe "use-effect"
   (it "runs effect after first render"
@@ -1006,7 +1174,39 @@ Buttons are widget.el push-buttons, so we use widget-apply."
               ;; Error should have occurred because vui-with-async-context
               ;; was evaluated outside component context
               (expect error-occurred :to-match "outside of component context"))
-          (kill-buffer "*test-async-cb*"))))))
+          (kill-buffer "*test-async-cb*")))))
+
+  (it "vui-with-async-context works when evaluated inside component"
+    ;; Positive test: vui-with-async-context works correctly when the macro
+    ;; is evaluated INSIDE component context (during render/effect)
+    (let ((timer-fired nil)
+          (state-updated nil))
+      (defcomponent async-context-positive ()
+        :state ((ticks 0))
+        :render
+        (progn
+          (use-effect ()
+            ;; Capture context NOW while inside component
+            (let ((update-fn (vui-with-async-context
+                               (setq timer-fired t)
+                               (vui-set-state :ticks #'1+))))
+              (run-with-timer 0.02 nil update-fn)
+              ;; Return cleanup
+              (lambda () nil)))
+          (setq state-updated ticks)
+          (vui-text (number-to-string ticks))))
+      (let ((instance (vui-mount (vui-component 'async-context-positive)
+                                 "*test-async-ctx*")))
+        (unwind-protect
+            (progn
+              ;; Initially 0
+              (expect (plist-get (vui-instance-state instance) :ticks) :to-equal 0)
+              ;; Wait for timer
+              (sleep-for 0.05)
+              ;; State should have been updated via async context
+              (expect timer-fired :to-be-truthy)
+              (expect (plist-get (vui-instance-state instance) :ticks) :to-equal 1))
+          (kill-buffer "*test-async-ctx*"))))))
 
 (describe "vui-async-callback"
   (it "allows setting state from async callback with arguments"
@@ -1784,6 +1984,78 @@ Buttons are widget.el push-buttons, so we use widget-apply."
       (expect handler-called :to-be-truthy)
       (expect (car handler-called) :to-equal "on-click")
       (expect (cadr handler-called) :to-equal "Custom event error"))))
+
+(describe "vui-set-state functional updates"
+  (it "accepts function as value"
+    (defcomponent fn-update-test ()
+      :state ((count 0))
+      :render (vui-button "Inc" :on-click (lambda () (vui-set-state :count #'1+))))
+    (let ((instance (vui-mount (vui-component 'fn-update-test) "*test-fn*")))
+      (unwind-protect
+          (progn
+            (expect (plist-get (vui-instance-state instance) :count) :to-equal 0)
+            (with-current-buffer "*test-fn*"
+              (vui-test--click-button-at (point-min))
+              (vui-test--click-button-at (point-min))
+              (vui-test--click-button-at (point-min)))
+            (expect (plist-get (vui-instance-state instance) :count) :to-equal 3))
+        (kill-buffer "*test-fn*"))))
+
+  (it "functional update receives current value"
+    (defcomponent fn-transform-test ()
+      :state ((items '("a" "b")))
+      :render (vui-button "Add"
+                :on-click (lambda ()
+                            (vui-set-state :items (lambda (old) (cons "new" old))))))
+    (let ((instance (vui-mount (vui-component 'fn-transform-test) "*test-fn2*")))
+      (unwind-protect
+          (progn
+            (expect (plist-get (vui-instance-state instance) :items)
+                    :to-equal '("a" "b"))
+            (with-current-buffer "*test-fn2*"
+              (vui-test--click-button-at (point-min)))
+            (expect (plist-get (vui-instance-state instance) :items)
+                    :to-equal '("new" "a" "b")))
+        (kill-buffer "*test-fn2*"))))
+
+  (it "handles non-function values normally"
+    (defcomponent mixed-update-test ()
+      :state ((value 10))
+      :render (vui-hstack
+               (vui-button "Set" :on-click (lambda () (vui-set-state :value 42)))
+               (vui-button "Inc" :on-click (lambda () (vui-set-state :value #'1+)))))
+    (let ((instance (vui-mount (vui-component 'mixed-update-test) "*test-fn3*")))
+      (unwind-protect
+          (with-current-buffer "*test-fn3*"
+            ;; Click Set button (sets to 42)
+            (goto-char (point-min))
+            (search-forward "[Set]")
+            (vui-test--click-button-at (match-beginning 0))
+            (expect (plist-get (vui-instance-state instance) :value) :to-equal 42)
+            ;; Click Inc button (increments using function)
+            (goto-char (point-min))
+            (search-forward "[Inc]")
+            (vui-test--click-button-at (match-beginning 0))
+            (expect (plist-get (vui-instance-state instance) :value) :to-equal 43))
+        (kill-buffer "*test-fn3*"))))
+
+  (it "avoids stale closure issue with functional update"
+    ;; This demonstrates why functional updates are important:
+    ;; Without them, closures capture stale values
+    (defcomponent stale-closure-test ()
+      :state ((count 0))
+      :render
+      (progn
+        ;; Use functional update to avoid stale closure
+        (vui-button "Safe Inc" :on-click (lambda () (vui-set-state :count #'1+)))))
+    (let ((instance (vui-mount (vui-component 'stale-closure-test) "*test-fn4*")))
+      (unwind-protect
+          (with-current-buffer "*test-fn4*"
+            ;; Rapid clicks - all should increment properly with functional update
+            (dotimes (_ 5)
+              (vui-test--click-button-at (point-min)))
+            (expect (plist-get (vui-instance-state instance) :count) :to-equal 5))
+        (kill-buffer "*test-fn4*")))))
 
 (describe "vui-batch"
   (it "batches multiple state updates into single render"
