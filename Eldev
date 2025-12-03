@@ -1,4 +1,4 @@
-; -*- mode: emacs-lisp; lexical-binding: t -*-
+;;; -*- mode: emacs-lisp; lexical-binding: t -*-
 
 ;; Eldev configuration for vui.el
 ;; See https://github.com/doublep/eldev
@@ -10,14 +10,25 @@
 ;; Main package is vui.el
 (setf eldev-project-main-file "vui.el")
 
-;; Testing configuration
-(setf eldev-test-framework 'buttercup)
+;; Lint using package-lint only (skip elisp-lint style checks)
+(setf eldev-lint-default '(package))
 
-;; Lint configuration
-(setf eldev-lint-default '(elisp))
+;; Allow React-style hook names without vui- prefix.
+;; These are intentionally short for better DX: defcomponent, use-effect,
+;; use-ref, use-callback, use-memo, use-async, defcontext.
+;; We filter these specific errors since package-lint doesn't support whitelisting.
+(defun vui--filter-package-lint-errors (errors)
+  "Filter out prefix errors for intentionally unprefixed symbols."
+  (let ((allowed-unprefixed '("defcomponent" "defcontext"
+                              "use-effect" "use-ref" "use-callback"
+                              "use-callback\\*" "use-memo" "use-memo\\*"
+                              "use-async")))
+    (seq-remove
+     (lambda (err)
+       (and (string-match-p "doesn't start with package's prefix" (nth 3 err))
+            (seq-some (lambda (sym)
+                        (string-match-p (format "\"%s\"" sym) (nth 3 err)))
+                      allowed-unprefixed)))
+     errors)))
 
-;; Exclude docs directory from linting
-(setf eldev-lint-fileset '(:and eldev-main-fileset (:not "docs/")))
-
-;; Suppress byte-compile docstring warnings (width, etc.)
-(setf byte-compile-warnings '(not docstrings))
+(advice-add 'package-lint-buffer :filter-return #'vui--filter-package-lint-errors)
