@@ -2,9 +2,7 @@
 #+AUTHOR: vui.el Documentation
 #+OPTIONS: toc:2 num:t
 
-vui.el provides robust error handling to prevent crashes and help with
-debugging. Errors in render functions, lifecycle hooks, and event handlers
-are all caught and handled gracefully.
+vui.el provides robust error handling to prevent crashes and help with debugging. Errors in render functions, lifecycle hooks, and event handlers are all caught and handled gracefully.
 
 * Error Boundaries
 
@@ -15,28 +13,45 @@ Error boundaries catch errors during rendering and display a fallback UI.
 #+begin_src elisp
 (vui-error-boundary
  :id "my-boundary"
- :fallback (vui-text "Something went wrong!" :face 'error)
+ :fallback (lambda (_err)
+             (vui-text "Something went wrong!" :face 'error))
  :children (vui-component 'possibly-broken))
 #+end_src
 
-If =possibly-broken= throws an error during render, the fallback is shown
-instead of crashing.
+If =possibly-broken= throws an error during render, the fallback is shown instead of crashing.
 
 ** Properties
 
-| Property    | Description                          |
-|-------------+--------------------------------------|
-| =:id=       | Unique identifier for this boundary  |
-| =:fallback= | Vnode to show when error occurs      |
-| =:on-error= | Callback when error is caught        |
-| =:children= | Protected content                    |
+| Property    | Description                            |
+|-------------+----------------------------------------|
+| =:id=       | Unique identifier for this boundary    |
+| =:fallback= | Function =(lambda (error) vnode)=      |
+| =:on-error= | Optional callback when error is caught |
+| =:children= | Protected content                      |
+
+** Displaying Error Details
+
+Since =:fallback= receives the error, you can display it:
+
+#+begin_src elisp
+(vui-error-boundary
+ :id "detailed-boundary"
+ :fallback (lambda (err)
+             (vui-vstack
+              (vui-text "Error occurred:" :face 'error)
+              (vui-text (format "%S" err) :face 'shadow)))
+ :children (vui-component 'risky-component))
+#+end_src
 
 ** With Error Callback
+
+Use =:on-error= for side effects like logging:
 
 #+begin_src elisp
 (vui-error-boundary
  :id "logged-boundary"
- :fallback (vui-text "Error! Check logs.")
+ :fallback (lambda (_err)
+             (vui-text "Error! Check logs."))
  :on-error (lambda (err)
              (message "Caught error: %S" err)
              (log-error-to-server err))
@@ -50,16 +65,15 @@ Use =vui-reset-error-boundary= to retry after an error:
 #+begin_src elisp
 (defcomponent error-recovery ()
   :render
-  (vui-fragment
-   (vui-error-boundary
-    :id "recoverable"
-    :fallback (vui-fragment
-               (vui-text "Error occurred!")
-               (vui-newline)
-               (vui-button "Try Again"
-                           :on-click (lambda ()
-                                       (vui-reset-error-boundary "recoverable"))))
-    :children (vui-component 'may-fail))))
+  (vui-error-boundary
+   :id "recoverable"
+   :fallback (lambda (err)
+               (vui-vstack
+                (vui-text (format "Error: %S" err) :face 'error)
+                (vui-button "Try Again"
+                  :on-click (lambda ()
+                              (vui-reset-error-boundary "recoverable")))))
+   :children (vui-component 'may-fail)))
 #+end_src
 
 ** Error Boundary Scope
@@ -73,7 +87,7 @@ Error boundaries only catch errors in their children:
 
  (vui-error-boundary
   :id "protected"
-  :fallback (vui-text "Protected error")
+  :fallback (lambda (_err) (vui-text "Protected error"))
   :children
   ;; This error IS caught
   (vui-component 'protected)))
@@ -179,12 +193,13 @@ Structure: =(TYPE ERROR CONTEXT)=
   :render
   (vui-error-boundary
    :id "app-boundary"
-   :fallback (vui-fragment
-              (vui-text "The app crashed." :face 'error)
-              (vui-newline)
-              (vui-button "Reload"
-                          :on-click (lambda ()
-                                      (vui-reset-error-boundary "app-boundary"))))
+   :fallback (lambda (err)
+               (vui-vstack
+                (vui-text "The app crashed." :face 'error)
+                (vui-text (format "Error: %S" err) :face 'shadow)
+                (vui-button "Reload"
+                  :on-click (lambda ()
+                              (vui-reset-error-boundary "app-boundary")))))
    :children (vui-component 'main-content)))
 #+end_src
 
@@ -199,13 +214,15 @@ Isolate independent features:
               ;; Sidebar error won't crash main content
               (vui-error-boundary
                :id "sidebar"
-               :fallback (vui-text "[Sidebar unavailable]")
+               :fallback (lambda (_err)
+                           (vui-text "[Sidebar unavailable]"))
                :children (vui-component 'sidebar))
 
               ;; Main content error won't crash sidebar
               (vui-error-boundary
                :id "main"
-               :fallback (vui-text "[Content unavailable]")
+               :fallback (lambda (_err)
+                           (vui-text "[Content unavailable]"))
                :children (vui-component 'main-content))))
 #+end_src
 
@@ -225,15 +242,19 @@ Isolate independent features:
 
 ** 4. Graceful Degradation
 
+Handle errors explicitly when appropriate:
+
 #+begin_src elisp
 (defcomponent safe-data-display ()
   :state ((data nil)
           (error nil))
 
   :on-mount
-  (condition-case err
-      (fetch-data (lambda (d) (vui-set-state :data d)))
-    (error (vui-set-state :error err)))
+  (fetch-data
+   (vui-async-callback (result)
+     (if (plist-get result :error)
+         (vui-set-state :error (plist-get result :error))
+       (vui-set-state :data (plist-get result :data)))))
 
   :render
   (cond
@@ -244,18 +265,19 @@ Isolate independent features:
 
 * Summary
 
-| Feature                      | Purpose                         |
-|------------------------------+---------------------------------|
-| =vui-error-boundary=         | Catch render errors             |
-| =vui-reset-error-boundary=   | Retry after error               |
-| =vui-lifecycle-error-handler=| Handle lifecycle errors         |
-| =vui-event-error-handler=    | Handle event errors             |
-| =vui-last-error=             | Access last error details       |
+| Feature                       | Purpose                   |
+|-------------------------------+---------------------------|
+| =vui-error-boundary=          | Catch render errors       |
+| =vui-reset-error-boundary=    | Retry after error         |
+| =vui-lifecycle-error-handler= | Handle lifecycle errors   |
+| =vui-event-error-handler=     | Handle event errors       |
+| =vui-last-error=              | Access last error details |
 
 * Try It Yourself
 
 #+begin_quote
 *Exercise*: Create a =safe-form= component that:
+
 1. Wraps a form in an error boundary
 2. Shows a friendly error message with a "Reset Form" button
 3. Logs errors to =*form-errors*= buffer

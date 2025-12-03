@@ -2,8 +2,7 @@
 #+AUTHOR: vui.el Documentation
 #+OPTIONS: toc:2 num:t
 
-Layout primitives help you arrange UI elements in structured ways: horizontally,
-vertically, in boxes, or in tables.
+Layout primitives help you arrange UI elements in structured ways: horizontally, vertically, in boxes, or in tables.
 
 * Horizontal Layout - =vui-hstack=
 
@@ -150,11 +149,11 @@ Output (20 chars wide):
 
 ** Alignment Options
 
-| Value     | Description                |
-|-----------+----------------------------|
-| =:left=   | Align to left (default)    |
-| =:center= | Center in box              |
-| =:right=  | Align to right             |
+| Value     | Description             |
+|-----------+-------------------------|
+| =:left=   | Align to left (default) |
+| =:center= | Center in box           |
+| =:right=  | Align to right          |
 
 #+begin_src elisp
 (vui-vstack
@@ -249,8 +248,7 @@ Output:
 +----------+------------+------------+
 #+end_example
 
-Bordered tables automatically add padding around cell content (=| value |=
-instead of =|value|=) for readability.
+Bordered tables automatically add padding around cell content (=| value |= instead of =|value|=) for readability.
 
 ** Unicode Borders
 
@@ -299,31 +297,30 @@ Output:
 
 ** Column Properties
 
-| Property     | Description                                    |
-|--------------+------------------------------------------------|
-| =:header=    | Column header text                             |
-| =:width=     | Target width for cell content                  |
-| =:min-width= | Minimum width, expands as needed               |
-| =:grow=      | If t, pad short content and expand for long    |
-| =:truncate=  | If t, truncate long content with "..."         |
-| =:align=     | =:left=, =:center=, or =:right=                |
+| Property     | Description                                 |
+|--------------+---------------------------------------------|
+| =:header=    | Column header text                          |
+| =:width=     | Target width for cell content               |
+| =:min-width= | Minimum width, expands as needed            |
+| =:grow=      | If t, pad short content and expand for long |
+| =:truncate=  | If t, truncate long content with "..."      |
+| =:align=     | =:left=, =:center=, or =:right=             |
 
 *** Width Behavior
 
-The =:width=, =:grow=, and =:truncate= options interact to control how columns
-handle content that doesn't match the declared width:
+The =:width=, =:grow=, and =:truncate= options interact to control how columns handle content that doesn't match the declared width:
 
-| =:width= | =:grow= | =:truncate= | Content vs Width | Result                                    |
-|----------+---------+-------------+------------------+-------------------------------------------|
-| W        | nil     | nil         | content < W      | Column shrinks to content size            |
-| W        | nil     | nil         | content > W      | Overflow with broken bar (¦)              |
-| W        | t       | nil         | content < W      | Column = W, content padded                |
-| W        | t       | nil         | content > W      | Column expands to fit content             |
-| W        | nil     | t           | content < W      | Column shrinks to content size            |
-| W        | nil     | t           | content > W      | Column = W, content truncated with "..."  |
-| W        | t       | t           | content < W      | Column = W, content padded                |
-| W        | t       | t           | content > W      | Column = W, content truncated with "..."  |
-| nil      | -       | -           | any              | Column auto-sizes to content              |
+| =:width= | =:grow= | =:truncate= | Content vs Width | Result                                   |
+|----------+---------+-------------+------------------+------------------------------------------|
+| W        | nil     | nil         | content < W      | Column shrinks to content size           |
+| W        | nil     | nil         | content > W      | Overflow with broken bar (¦)             |
+| W        | t       | nil         | content < W      | Column = W, content padded               |
+| W        | t       | nil         | content > W      | Column expands to fit content            |
+| W        | nil     | t           | content < W      | Column shrinks to content size           |
+| W        | nil     | t           | content > W      | Column = W, content truncated with "..." |
+| W        | t       | t           | content < W      | Column = W, content padded               |
+| W        | t       | t           | content > W      | Column = W, content truncated with "..." |
+| nil      | -       | -           | any              | Column auto-sizes to content             |
 
 *Notes:*
 - =:grow t= acts as a minimum width guarantee
@@ -375,6 +372,7 @@ Calculate column widths dynamically based on content:
 #+end_src
 
 See =docs/examples/05-wine-tasting.el= for a complete example with:
+
 - Interactive buttons in table cells
 - Dynamic column width calculation
 - Real-time statistics updates
@@ -456,18 +454,19 @@ Layouts can be nested for complex structures:
 
 * Summary
 
-| Primitive    | Purpose                      | Key Props                              |
-|--------------+------------------------------+----------------------------------------|
-| =vui-hstack= | Horizontal arrangement       | =:spacing=                             |
-| =vui-vstack= | Vertical arrangement         | =:spacing=, =:indent=                  |
-| =vui-box=    | Fixed-width container        | =:width=, =:align=, =:padding-left/right= |
-| =vui-table=  | Tabular data                 | =:columns=, =:rows=, =:border=         |
-| =vui-list=   | Dynamic list rendering       | items, render-fn, key-fn               |
+| Primitive    | Purpose                | Key Props                                 |
+|--------------+------------------------+-------------------------------------------|
+| =vui-hstack= | Horizontal arrangement | =:spacing=                                |
+| =vui-vstack= | Vertical arrangement   | =:spacing=, =:indent=                     |
+| =vui-box=    | Fixed-width container  | =:width=, =:align=, =:padding-left/right= |
+| =vui-table=  | Tabular data           | =:columns=, =:rows=, =:border=            |
+| =vui-list=   | Dynamic list rendering | items, render-fn, key-fn                  |
 
 * Try It Yourself
 
 #+begin_quote
 *Exercise*: Create a =dashboard= component that displays:
+
 1. A title "My Dashboard" at the top
 2. A table of tasks with columns: Status, Task, Due Date
 3. A button bar at the bottom with "Add Task" and "Clear Done" buttons

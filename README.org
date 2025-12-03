@@ -3,13 +3,10 @@
 
 *Declarative, component-based UI framework for Emacs*
 
-Build reactive UIs in Emacs using familiar patterns from React and other modern
-UI frameworks. Define components with local state, props, lifecycle hooks, and
-automatic re-rendering.
+Build reactive UIs in Emacs using familiar patterns from React and other modern UI frameworks. Define components with local state, props, lifecycle hooks, and automatic re-rendering.
 
 #+begin_quote
-*Note:* This is a fresh library under active development. The API may change
-based on real-world usage and feedback.
+*Note:* This is a fresh library under active development. The API may change based on real-world usage and feedback.
 #+end_quote
 
 * Features
@@ -42,8 +39,7 @@ based on real-world usage and feedback.
 (vui-mount (vui-component 'counter) "*counter*")
 #+end_src
 
-Result: A buffer with text "Count: 0" and a clickable button. Each click
-updates the count and re-renders.
+Result: A buffer with text "Count: 0" and a clickable button. Each click updates the count and re-renders.
 
 * More Examples
 
@@ -132,19 +128,19 @@ Clone this repository and add to your load-path:
 
 * Documentation
 
-| Document                               | Description                      |
-|----------------------------------------+----------------------------------|
-| [[file:docs/guide/01-getting-started.org][Getting Started]]                       | Installation and first component |
-| [[file:docs/guide/02-components.org][Components]]                             | Props, state, composition        |
-| [[file:docs/guide/03-primitives.org][Primitives]]                             | Text, button, field, etc.        |
-| [[file:docs/guide/04-layout.org][Layout]]                                 | hstack, vstack, table, list      |
-| [[file:docs/guide/05-hooks.org][Hooks]]                                  | use-effect, use-ref, use-memo    |
-| [[file:docs/guide/06-context.org][Context]]                                | Sharing data across components   |
-| [[file:docs/guide/07-lifecycle.org][Lifecycle]]                              | on-mount, on-update, on-unmount  |
-| [[file:docs/guide/08-error-handling.org][Error Handling]]                        | Error boundaries                 |
-| [[file:docs/guide/09-performance.org][Performance]]                            | Optimization techniques          |
-| [[file:docs/guide/10-dev-tools.org][Developer Tools]]                        | Inspector, profiler, debugging   |
-| [[file:docs/reference/api.org][API Reference]]                          | Complete function reference      |
+| Document        | Description                      |
+|-----------------+----------------------------------|
+| [[file:docs/guide/01-getting-started.org][Getting Started]] | Installation and first component |
+| [[file:docs/guide/02-components.org][Components]]      | Props, state, composition        |
+| [[file:docs/guide/03-primitives.org][Primitives]]      | Text, button, field, etc.        |
+| [[file:docs/guide/04-layout.org][Layout]]          | hstack, vstack, table, list      |
+| [[file:docs/guide/05-hooks.org][Hooks]]           | use-effect, use-ref, use-memo    |
+| [[file:docs/guide/06-context.org][Context]]         | Sharing data across components   |
+| [[file:docs/guide/07-lifecycle.org][Lifecycle]]       | on-mount, on-update, on-unmount  |
+| [[file:docs/guide/08-error-handling.org][Error Handling]]  | Error boundaries                 |
+| [[file:docs/guide/09-performance.org][Performance]]     | Optimization techniques          |
+| [[file:docs/guide/10-dev-tools.org][Developer Tools]] | Inspector, profiler, debugging   |
+| [[file:docs/reference/api.org][API Reference]]   | Complete function reference      |
 
 * Deep Dives
 
@@ -172,35 +168,36 @@ See [[file:docs/examples/][docs/examples/]] for complete, runnable examples:
 
 ** Primitives
 
-| Component       | Description                          |
-|-----------------+--------------------------------------|
-| =vui-text=      | Styled text                          |
-| =vui-newline=   | Line break                           |
-| =vui-space=     | Horizontal spacing                   |
-| =vui-button=    | Clickable button with callback       |
-| =vui-field=     | Text input field                     |
-| =vui-checkbox=  | Toggle checkbox                      |
-| =vui-select=    | Selection from options               |
-| =vui-fragment=  | Group elements without wrapper       |
+| Component      | Description                    |
+|----------------+--------------------------------|
+| =vui-text=     | Styled text                    |
+| =vui-newline=  | Line break                     |
+| =vui-space=    | Horizontal spacing             |
+| =vui-button=   | Clickable button with callback |
+| =vui-field=    | Text input field               |
+| =vui-checkbox= | Toggle checkbox                |
+| =vui-select=   | Selection from options         |
+| =vui-fragment= | Group elements without wrapper |
 
 ** Layout
 
-| Component      | Description                            |
-|----------------+----------------------------------------|
-| =vui-hstack=   | Horizontal layout with spacing         |
-| =vui-vstack=   | Vertical layout with spacing/indent    |
-| =vui-box=      | Fixed-width container with alignment   |
-| =vui-table=    | Table with headers, borders, alignment |
-| =vui-list=     | Dynamic list with key-based reconcile  |
+| Component    | Description                            |
+|--------------+----------------------------------------|
+| =vui-hstack= | Horizontal layout with spacing         |
+| =vui-vstack= | Vertical layout with spacing/indent    |
+| =vui-box=    | Fixed-width container with alignment   |
+| =vui-table=  | Table with headers, borders, alignment |
+| =vui-list=   | Dynamic list with key-based reconcile  |
 
 * Hooks
 
-| Hook           | Description                                   |
-|----------------+-----------------------------------------------|
-| =use-effect=   | Side effects with cleanup                     |
-| =use-ref=      | Mutable reference (no re-render on change)    |
-| =use-callback= | Stable callback reference                     |
-| =use-memo=     | Cached computed value                         |
+| Hook           | Description                                |
+|----------------+--------------------------------------------|
+| =use-effect=   | Side effects with cleanup                  |
+| =use-ref=      | Mutable reference (no re-render on change) |
+| =use-callback= | Stable callback reference                  |
+| =use-memo=     | Cached computed value                      |
+| =use-async=    | Async data loading with cache              |
 
 * Developer Tools
 

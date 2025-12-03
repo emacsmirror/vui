@@ -2,9 +2,7 @@
 #+AUTHOR: vui.el Documentation
 #+OPTIONS: toc:2 num:t
 
-Context provides a way to pass data through the component tree without having to
-pass props down manually at every level. It's useful for "global" data like
-themes, user authentication, or localization.
+Context provides a way to pass data through the component tree without having to pass props down manually at every level. It's useful for "global" data like themes, user authentication, or localization.
 
 * The Problem: Prop Drilling
 
@@ -121,8 +119,7 @@ No more prop drilling! The component gets the user directly from context.
 
 * Updating Context
 
-Context values are read-only from consumers. To update context, you have two
-options:
+Context values are read-only from consumers. To update context, you have two options:
 
 ** Option 1: Provide a Setter in Context
 
@@ -259,16 +256,17 @@ When no provider is found, context returns the default value:
 
 * Summary
 
-| API                    | Purpose                        |
-|------------------------+--------------------------------|
-| =defcontext=           | Define a new context           |
-| =NAME-provider=        | Provide context value to tree  |
-| =use-NAME=             | Consume context value          |
+| API             | Purpose                       |
+|-----------------+-------------------------------|
+| =defcontext=    | Define a new context          |
+| =NAME-provider= | Provide context value to tree |
+| =use-NAME=      | Consume context value         |
 
 * Try It Yourself
 
 #+begin_quote
 *Exercise*: Create a notification system using context:
+
 1. Define a =notifications= context
 2. Create a =notification-provider= that manages a list of notifications
 3. Provide =add-notification= and =clear-notifications= functions

@@ -2,8 +2,7 @@
 #+AUTHOR: vui.el Documentation
 #+OPTIONS: toc:2 num:t
 
-vui.el includes several tools to help you debug and understand your
-applications.
+vui.el includes several tools to help you debug and understand your applications.
 
 * Component Inspector
 
@@ -296,23 +295,23 @@ vui--root-instance
 
 * Summary
 
-| Tool                 | Purpose                         | Command               |
-|----------------------+---------------------------------+-----------------------|
-| Component Inspector  | View tree structure             | =vui-inspect=         |
-| State Viewer         | View component state            | =vui-inspect-state=   |
-| Instance Lookup      | Find instances                  | =vui-get-instance-by-id= |
-| Timing               | Profile performance             | =vui-report-timing=   |
-| Debug Logging        | Trace render cycles             | =vui-debug-show=      |
-| Error Info           | Last error details              | =vui-last-error=      |
+| Tool                | Purpose              | Command                  |
+|---------------------+----------------------+--------------------------|
+| Component Inspector | View tree structure  | =vui-inspect=            |
+| State Viewer        | View component state | =vui-inspect-state=      |
+| Instance Lookup     | Find instances       | =vui-get-instance-by-id= |
+| Timing              | Profile performance  | =vui-report-timing=      |
+| Debug Logging       | Trace render cycles  | =vui-debug-show=         |
+| Error Info          | Last error details   | =vui-last-error=         |
 
 * Configuration Variables
 
-| Variable                  | Purpose                            |
-|---------------------------+------------------------------------|
-| =vui-timing-enabled=      | Enable/disable timing collection   |
-| =vui-debug-enabled=       | Enable/disable debug logging       |
-| =vui-debug-log-phases=    | Filter which phases to log         |
-| =vui--timing-max-entries= | Max timing entries to keep         |
+| Variable                  | Purpose                          |
+|---------------------------+----------------------------------|
+| =vui-timing-enabled=      | Enable/disable timing collection |
+| =vui-debug-enabled=       | Enable/disable debug logging     |
+| =vui-debug-log-phases=    | Filter which phases to log       |
+| =vui--timing-max-entries= | Max timing entries to keep       |
 
 * What's Next?
 

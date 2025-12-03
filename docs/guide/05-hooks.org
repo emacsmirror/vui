@@ -2,8 +2,7 @@
 #+AUTHOR: vui.el Documentation
 #+OPTIONS: toc:2 num:t
 
-Hooks let you add side effects, mutable references, and memoization to your
-components. They're inspired by React Hooks but adapted for Emacs Lisp.
+Hooks let you add side effects, mutable references, and memoization to your components. They're inspired by React Hooks but adapted for Emacs Lisp.
 
 * Side Effects - =use-effect=
 
@@ -24,6 +23,7 @@ components. They're inspired by React Hooks but adapted for Emacs Lisp.
 #+end_src
 
 The effect runs:
+
 1. After the first render
 2. After any render where =count= has changed
 
@@ -67,6 +67,7 @@ Return a function from the effect body to run cleanup:
 #+end_src
 
 Cleanup runs:
+
 1. Before the effect runs again (when deps change)
 2. When the component unmounts
 
@@ -127,8 +128,7 @@ Cleanup runs:
 
 * Mutable References - =use-ref=
 
-=use-ref= creates a mutable value that persists across renders without causing
-re-renders when changed.
+=use-ref= creates a mutable value that persists across renders without causing re-renders when changed.
 
 ** Basic Ref
 
@@ -202,8 +202,7 @@ re-renders when changed.
 
 * Memoized Callbacks - =use-callback=
 
-=use-callback= returns a stable function reference that only changes when
-dependencies change.
+=use-callback= returns a stable function reference that only changes when dependencies change.
 
 ** Basic Usage
 
@@ -220,9 +219,7 @@ dependencies change.
 
 ** Why Use It?
 
-Without =use-callback=, a new function is created on every render. This can
-cause unnecessary re-renders of child components that receive the callback
-as a prop.
+Without =use-callback=, a new function is created on every render. This can cause unnecessary re-renders of child components that receive the callback as a prop.
 
 #+begin_src elisp
 ;; Without use-callback: new function every render
@@ -246,8 +243,7 @@ as a prop.
 
 * Memoized Values - =use-memo=
 
-=use-memo= caches expensive computations, only recomputing when dependencies
-change.
+=use-memo= caches expensive computations, only recomputing when dependencies change.
 
 ** Basic Usage
 
@@ -267,6 +263,7 @@ change.
 ** When to Use
 
 Use =use-memo= when:
+
 - Computing a value is expensive (sorting, filtering, transforming)
 - The computation depends on specific inputs
 - You want to avoid redundant work on re-renders
@@ -287,14 +284,11 @@ Use =use-memo= when:
 
 * Async Data Loading - =use-async=
 
-=use-async= provides async data loading with loading/error states and caching.
-It uses a callback-based API (like JavaScript Promises) to support both
-synchronous and truly asynchronous operations.
+=use-async= provides async data loading with loading/error states and caching. It uses a callback-based API (like JavaScript Promises) to support both synchronous and truly asynchronous operations.
 
 ** How It Works
 
-The loader function receives two callbacks: =resolve= and =reject=. Call =resolve=
-with data on success, or =reject= with an error message on failure.
+The loader function receives two callbacks: =resolve= and =reject=. Call =resolve= with data on success, or =reject= with an error message on failure.
 
 #+begin_src text
 Render 1: use-async called → loader receives (resolve, reject)
@@ -329,11 +323,11 @@ Render 2: use-async called → returns (:status ready :data ...)
 
 =use-async= returns a plist with:
 
-| Key       | Description                                    |
-|-----------+------------------------------------------------|
-| =:status= | One of: =pending=, =ready=, or =error=         |
-| =:data=   | The loaded data (when status is =ready=)       |
-| =:error=  | Error message (when status is =error=)         |
+| Key       | Description                              |
+|-----------+------------------------------------------|
+| =:status= | One of: =pending=, =ready=, or =error=   |
+| =:data=   | The loaded data (when status is =ready=) |
+| =:error=  | Error message (when status is =error=)   |
 
 ** Key-Based Caching
 
@@ -474,9 +468,7 @@ For synchronous loaders, calling =resolve= immediately still provides benefits:
 
 ** Emacs Async Landscape
 
-*Important:* =use-async= does NOT perform asynchronous computations itself. It is
-purely a *UI-layer abstraction* that handles loading states, caching, and
-re-rendering. The actual async work is your responsibility.
+*Important:* =use-async= does NOT perform asynchronous computations itself. It is purely a *UI-layer abstraction* that handles loading states, caching, and re-rendering. The actual async work is your responsibility.
 
 #+begin_src elisp
 ;; THIS WILL STILL BLOCK EMACS!
@@ -485,8 +477,7 @@ re-rendering. The actual async work is your responsibility.
     (funcall resolve (slow-synchronous-computation))))  ; Blocks for 5 seconds
 #+end_src
 
-If you put slow synchronous code inside the loader, Emacs will freeze while it
-runs. =use-async= just provides the plumbing for when you *do* have async code.
+If you put slow synchronous code inside the loader, Emacs will freeze while it runs. =use-async= just provides the plumbing for when you *do* have async code.
 
 To make operations truly non-blocking, use one of the async mechanisms below.
 
@@ -538,17 +529,11 @@ To make operations truly non-blocking, use one of the async mechanisms below.
       :else (lambda (err) (funcall reject (plz-error-message err))))))
 #+end_src
 
-The key insight: =use-async= handles the *React-like concerns* (loading states,
-caching, triggering re-renders), while the underlying async mechanism handles
-the *actual async execution*. This separation lets you choose the right tool
-for each job.
+The key insight: =use-async= handles the *React-like concerns* (loading states, caching, triggering re-renders), while the underlying async mechanism handles the *actual async execution*. This separation lets you choose the right tool for each job.
 
 * Async Context - =vui-with-async-context=
 
-When calling =vui-set-state= from asynchronous callbacks like timers, process
-sentinels, or hooks, you need to restore the component context. The
-=vui-with-async-context= macro captures the current context and returns a
-function that restores it when called.
+When calling =vui-set-state= from asynchronous callbacks like timers, process sentinels, or hooks, you need to restore the component context. The =vui-with-async-context= macro captures the current context and returns a function that restores it when called.
 
 ** The Problem
 
@@ -567,8 +552,7 @@ function that restores it when called.
     (vui-text (format "Elapsed: %d" seconds))))
 #+end_src
 
-The timer callback runs later, outside of any component rendering context.
-When it tries to call =vui-set-state=, the component context isn't available.
+The timer callback runs later, outside of any component rendering context. When it tries to call =vui-set-state=, the component context isn't available.
 
 ** The Solution
 
@@ -586,9 +570,7 @@ When it tries to call =vui-set-state=, the component context isn't available.
     (vui-text (format "Elapsed: %d" seconds))))
 #+end_src
 
-*Note:* We use =#'1+= (functional update) because =(1+ seconds)= would capture
-=seconds= at definition time. With functional update, =vui-set-state= passes
-the current value to the function.
+*Note:* We use =#'1+= (functional update) because =(1+ seconds)= would capture =seconds= at definition time. With functional update, =vui-set-state= passes the current value to the function.
 
 =vui-with-async-context= captures:
 - The current buffer
@@ -619,9 +601,7 @@ When the returned function is called, it:
     (vui-text time)))
 #+end_src
 
-Note: Here =(current-time-string)= works because it's a function call that
-executes when the callback runs, not a captured variable. For state-based
-updates, use functional form: =(vui-set-state :count #'1+)=
+Note: Here =(current-time-string)= works because it's a function call that executes when the callback runs, not a captured variable. For state-based updates, use functional form: =(vui-set-state :count #'1+)=
 
 *** Emacs Hooks
 
@@ -665,20 +645,21 @@ updates, use functional form: =(vui-set-state :count #'1+)=
 ** When to Use
 
 Use =vui-with-async-context= when you need =vui-set-state= in:
+
 - =run-with-timer= callbacks
 - =run-with-idle-timer= callbacks
 - Emacs hooks (=post-command-hook=, =window-size-change-functions=, etc.)
 - Any fire-and-forget callback
 
 You do NOT need it for:
+
 - Widget callbacks (buttons, fields) - these handle context automatically
 - =use-async= loaders - =resolve=/=reject= handle context automatically
 - Code directly in =:render= - already in component context
 
 * Async Callbacks with Arguments - =vui-async-callback=
 
-When an async operation passes data to your callback, use =vui-async-callback=
-instead of =vui-with-async-context=. It works the same way but accepts arguments.
+When an async operation passes data to your callback, use =vui-async-callback= instead of =vui-with-async-context=. It works the same way but accepts arguments.
 
 ** Basic Usage
 
@@ -718,12 +699,12 @@ instead of =vui-with-async-context=. It works the same way but accepts arguments
 
 ** Choosing Between the Macros
 
-| Macro                    | Use When                              |
-|--------------------------+---------------------------------------|
-| =vui-with-async-context= | Callback doesn't receive data         |
-|                          | (timers, hooks)                       |
-| =vui-async-callback=     | Callback receives data from async op  |
-|                          | (API responses, process output)       |
+| Macro                    | Use When                             |
+|--------------------------+--------------------------------------|
+| =vui-with-async-context= | Callback doesn't receive data        |
+|                          | (timers, hooks)                      |
+| =vui-async-callback=     | Callback receives data from async op |
+|                          | (API responses, process output)      |
 
 * Advanced: Custom Comparison
 
@@ -826,21 +807,22 @@ Include all values used in the effect/callback:
 
 * Summary
 
-| Hook/Macro                 | Purpose                              |
-|----------------------------+--------------------------------------|
-| =use-effect=               | Run side effects after render        |
-| =use-ref=                  | Mutable value without re-render      |
-| =use-callback=             | Stable function reference            |
-| =use-memo=                 | Cache expensive computations         |
-| =use-async=                | Load data asynchronously with cache  |
-| =use-callback*=            | use-callback with custom comparison  |
-| =use-memo*=                | use-memo with custom comparison      |
-| =vui-with-async-context=   | Capture context for async callbacks  |
+| Hook/Macro               | Purpose                             |
+|--------------------------+-------------------------------------|
+| =use-effect=             | Run side effects after render       |
+| =use-ref=                | Mutable value without re-render     |
+| =use-callback=           | Stable function reference           |
+| =use-memo=               | Cache expensive computations        |
+| =use-async=              | Load data asynchronously with cache |
+| =use-callback*=          | use-callback with custom comparison |
+| =use-memo*=              | use-memo with custom comparison     |
+| =vui-with-async-context= | Capture context for async callbacks |
 
 * Try It Yourself
 
 #+begin_quote
 *Exercise*: Create a =search-input= component that:
+
 1. Has a text field for search query
 2. Debounces the search (waits 500ms after typing stops)
 3. Shows "Searching..." while debouncing

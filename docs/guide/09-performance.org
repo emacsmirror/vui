@@ -6,8 +6,8 @@ This guide covers techniques for optimizing vui.el applications.
 
 * Understanding Re-renders
 
-By default, when state changes, the component and all its children re-render.
-This is usually fine, but can become slow with:
+By default, when state changes, the component and all its children re-render. This is usually fine, but can become slow with:
+
 - Large lists
 - Complex computations in render
 - Deeply nested component trees
@@ -32,6 +32,7 @@ Use =:should-update= to skip unnecessary re-renders:
 ** Arguments Available
 
 In =:should-update=, you have access to:
+
 - =props= - New props
 - =state= - New state
 - =prev-props= - Previous props
@@ -127,8 +128,7 @@ Prevent unnecessary child re-renders by keeping callback references stable:
 
 * Batching Updates
 
-Multiple state updates can trigger multiple re-renders. Use =vui-batch= to
-combine them:
+Multiple state updates can trigger multiple re-renders. Use =vui-batch= to combine them:
 
 #+begin_src elisp
 ;; Without batching: 3 re-renders
@@ -203,6 +203,7 @@ Always provide keys for dynamic lists:
 #+end_src
 
 Keys help vui.el:
+
 - Identify which items changed
 - Preserve component state when reordering
 - Minimize DOM operations
@@ -246,6 +247,7 @@ The report shows time spent in each phase per component.
 
 #+begin_quote
 *Exercise*: Optimize a slow list component:
+
 1. Create a list of 1000 items
 2. Add a filter input
 3. Use =use-memo= for filtering

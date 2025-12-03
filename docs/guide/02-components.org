@@ -2,13 +2,12 @@
 #+AUTHOR: vui.el Documentation
 #+OPTIONS: toc:2 num:t
 
-Components are the building blocks of vui.el applications. This guide covers
-everything you need to know about defining, composing, and working with
-components.
+Components are the building blocks of vui.el applications. This guide covers everything you need to know about defining, composing, and working with components.
 
 * What is a Component?
 
 A component is a reusable piece of UI with its own:
+
 - *Props* - Input data from parent
 - *State* - Internal data that can change over time
 - *Render function* - Describes what to display
@@ -75,8 +74,7 @@ Props are the component's public interface - data passed from parent components.
 
 *** Props are Read-Only
 
-Props should never be modified inside a component. They flow down from the
-parent. If you need to modify a value, use state instead.
+Props should never be modified inside a component. They flow down from the parent. If you need to modify a value, use state instead.
 
 #+begin_src elisp
 ;; DON'T do this:
@@ -95,8 +93,7 @@ parent. If you need to modify a value, use state instead.
 
 ** State
 
-State is internal data that belongs to the component. When state changes, the
-component re-renders.
+State is internal data that belongs to the component. When state changes, the component re-renders.
 
 *** Declaring State
 
@@ -139,8 +136,7 @@ State variables are available directly in the render function:
                            (vui-set-state :count 0)))))
 #+end_src
 
-=vui-set-state= takes a keyword (=:count=) and a new value. It automatically
-triggers a re-render with the updated state.
+=vui-set-state= takes a keyword (=:count=) and a new value. It automatically triggers a re-render with the updated state.
 
 *** State is Local
 
@@ -162,13 +158,11 @@ Each component instance has its own state:
 
 * The Render Function
 
-The =:render= body defines what the component displays. It must return a vnode
-(or =nil= for nothing).
+The =:render= body defines what the component displays. It must return a vnode (or =nil= for nothing).
 
 ** Pure Rendering
 
-The render function should be /pure/ - it should only compute the UI based on
-props and state, with no side effects.
+The render function should be /pure/ - it should only compute the UI based on props and state, with no side effects.
 
 #+begin_src elisp
 ;; Good: Pure render function
@@ -350,13 +344,11 @@ When multiple components need to share state, lift it to a common ancestor:
 (vui-mount (vui-component 'my-app) "*my-app*")
 #+end_src
 
-The buffer is created if it doesn't exist. The component becomes the "root"
-of that buffer's UI tree.
+The buffer is created if it doesn't exist. The component becomes the "root" of that buffer's UI tree.
 
 ** Multiple Roots
 
-Each buffer can have one root component. For multiple independent UIs, use
-multiple buffers:
+Each buffer can have one root component. For multiple independent UIs, use multiple buffers:
 
 #+begin_src elisp
 (vui-mount (vui-component 'sidebar) "*sidebar*")
@@ -367,6 +359,7 @@ multiple buffers:
 
 #+begin_quote
 *Exercise*: Create a =collapsible-section= component that:
+
 1. Takes =title= and =children= props
 2. Has =expanded= state (initially =t=)
 3. Shows a toggle button (=[-]= when expanded, =[+]= when collapsed)

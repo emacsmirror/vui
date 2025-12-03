@@ -2,8 +2,7 @@
 #+AUTHOR: vui.el Documentation
 #+OPTIONS: toc:2 num:t
 
-Primitives are the basic building blocks for creating UIs in vui.el. They
-represent the fundamental elements that can be rendered to a buffer.
+Primitives are the basic building blocks for creating UIs in vui.el. They represent the fundamental elements that can be rendered to a buffer.
 
 * Text Display
 
@@ -74,13 +73,11 @@ Inserts whitespace:
 
 * Interactive Elements
 
-All interactive elements (buttons, fields, checkboxes, selects) support keyboard
-navigation with =TAB= / =S-TAB= to move between them.
+All interactive elements (buttons, fields, checkboxes, selects) support keyboard navigation with =TAB= / =S-TAB= to move between them.
 
 ** =vui-button= - Clickable Button
 
-Creates a button that responds to user activation (=RET= or mouse click).
-Buttons are rendered with brackets: =LABEL= becomes =[LABEL]=.
+Creates a button that responds to user activation (=RET= or mouse click). Buttons are rendered with brackets: =LABEL= becomes =[LABEL]=.
 
 #+begin_src elisp
 (vui-button "Click me"
@@ -127,8 +124,7 @@ Output (when disabled):
 
 *** Truncated Button
 
-When =:max-width= is set and the button label (including brackets) exceeds that
-width, the label is truncated with "...":
+When =:max-width= is set and the button label (including brackets) exceeds that width, the label is truncated with "...":
 
 #+begin_src elisp
 (vui-button "Very long button label"
@@ -156,13 +152,13 @@ Creates an editable text field:
 
 *** Field Properties
 
-| Property      | Description                           |
-|---------------+---------------------------------------|
-| =:value=      | Current field value (string)          |
-| =:on-change=  | Callback with new value when edited   |
-| =:on-submit=  | Callback when RET pressed in field    |
-| =:size=       | Field width in characters             |
-| =:key=        | Key for reconciliation                |
+| Property     | Description                         |
+|--------------+-------------------------------------|
+| =:value=     | Current field value (string)        |
+| =:on-change= | Callback with new value when edited |
+| =:on-submit= | Callback when RET pressed in field  |
+| =:size=      | Field width in characters           |
+| =:key=       | Key for reconciliation              |
 
 *** Field with Size
 
@@ -287,8 +283,7 @@ Groups multiple elements without adding any visible output:
  (vui-button "Action"))
 #+end_src
 
-Fragments are essential when a render function needs to return multiple
-elements:
+Fragments are essential when a render function needs to return multiple elements:
 
 #+begin_src elisp
 (defcomponent multi-line ()
@@ -326,16 +321,16 @@ Fragments can be nested and will be flattened:
 
 * Summary Table
 
-| Primitive        | Purpose                | Key Props                          |
-|------------------+------------------------+------------------------------------|
-| =vui-text=       | Display text           | =:face=, =:key=                    |
-| =vui-newline=    | Line break             | =:key=                             |
-| =vui-space=      | Whitespace             | width, =:key=                      |
-| =vui-button=     | Clickable button       | =:on-click=, =:disabled=, =:max-width= |
-| =vui-field=      | Text input             | =:value=, =:on-change=             |
-| =vui-checkbox=   | Toggle checkbox        | =:checked=, =:on-change=           |
-| =vui-select=     | Dropdown selection     | =:value=, =:options=, =:on-change= |
-| =vui-fragment=   | Group without output   | children                           |
+| Primitive      | Purpose              | Key Props                              |
+|----------------+----------------------+----------------------------------------|
+| =vui-text=     | Display text         | =:face=, =:key=                        |
+| =vui-newline=  | Line break           | =:key=                                 |
+| =vui-space=    | Whitespace           | width, =:key=                          |
+| =vui-button=   | Clickable button     | =:on-click=, =:disabled=, =:max-width= |
+| =vui-field=    | Text input           | =:value=, =:on-change=                 |
+| =vui-checkbox= | Toggle checkbox      | =:checked=, =:on-change=               |
+| =vui-select=   | Dropdown selection   | =:value=, =:options=, =:on-change=     |
+| =vui-fragment= | Group without output | children                               |
 
 * Complete Example
 
@@ -396,6 +391,7 @@ Here's a component using multiple primitives:
 
 #+begin_quote
 *Exercise*: Create a =rating-input= component that:
+
 1. Shows 5 buttons labeled "1" through "5"
 2. Highlights the selected rating with a different face
 3. Has a =:value= prop and =:on-change= callback
