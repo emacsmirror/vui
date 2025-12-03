@@ -65,11 +65,11 @@ Always returns a fixed-width string for consistent table alignment."
 (defcomponent score-input (value on-change)
   :render
   (vui-button (vui-example--format-score value 1)
-              :on-click (lambda ()
-                          (let ((num (read-number "Score (0 to remove, 1-5): " (or value 0))))
-                            (cond
-                             ((= num 0) (funcall on-change nil))
-                             ((<= 1 num 5) (funcall on-change num)))))))
+    :on-click (lambda ()
+                (let ((num (read-number "Score (0 to remove, 1-5): " (or value 0))))
+                  (cond
+                   ((= num 0) (funcall on-change nil))
+                   ((<= 1 num 5) (funcall on-change num)))))))
 
 
 ;;; Summary Table Component
@@ -154,45 +154,43 @@ Always returns a fixed-width string for consistent table alignment."
 (defcomponent personal-scores-table (wines participants scores
                                            on-score-change on-participant-change)
   :render
-  (let* ((sorted-wines (sort (copy-sequence wines)
-                             (lambda (a b)
-                               (< (plist-get a :order) (plist-get b :order)))))
-         ;; Calculate dynamic width: expand to fit longest name (+ 2 for brackets),
+  (let* (;; Calculate dynamic width: expand to fit longest name (+ 2 for brackets),
          ;; clamped between min and max
          (max-name-len (apply #'max (mapcar #'length participants)))
          (name-col-width (max vui-example--name-min-width
                               (min vui-example--name-max-width (+ max-name-len 2))))
          ;; Only truncate when name exceeds what max column can hold
          (max-display-len (- vui-example--name-max-width 2))
+         ;; Use wines as-is (by ID order), column headers show wine ID
          (columns (cons (list :header "Participant" :width name-col-width)
                         (mapcar (lambda (w)
-                                  (list :header (format "#%d" (plist-get w :order))
+                                  (list :header (format "#%d" (plist-get w :id))
                                         :width 5
                                         :align :right))
-                                sorted-wines)))
+                                wines)))
          (rows
           (mapcar
            (lambda (participant)
              (let ((pscores (cdr (assoc participant scores)))
                    (display-name (vui-example--truncate-name participant max-display-len)))
                (cons (vui-button display-name
-                                 :on-click (lambda ()
-                                             (let ((new-name (read-string "Participant name: "
-                                                                          participant)))
-                                               (when (and (not (string-empty-p new-name))
-                                                          (not (equal new-name participant)))
-                                                 (funcall on-participant-change
-                                                          participant new-name)))))
+                       :on-click (lambda ()
+                                   (let ((new-name (read-string "Participant name: "
+                                                                participant)))
+                                     (when (and (not (string-empty-p new-name))
+                                                (not (equal new-name participant)))
+                                       (funcall on-participant-change
+                                                participant new-name)))))
                      (mapcar
                       (lambda (wine)
                         (let ((wine-id (plist-get wine :id)))
                           (vui-component 'score-input
-                                         :key (format "%s-%d" participant wine-id)
-                                         :value (plist-get pscores wine-id)
-                                         :on-change (lambda (v)
-                                                      (funcall on-score-change
-                                                               participant wine-id v)))))
-                      sorted-wines))))
+                            :key (format "%s-%d" participant wine-id)
+                            :value (plist-get pscores wine-id)
+                            :on-change (lambda (v)
+                                         (funcall on-score-change
+                                                  participant wine-id v)))))
+                      wines))))
            participants)))
     (vui-table
      :columns columns
@@ -257,24 +255,24 @@ Always returns a fixed-width string for consistent table alignment."
      (vui-newline)
      ;; Summary
      (vui-component 'summary-table
-                    :scores scores
-                    :wines wines)
+       :scores scores
+       :wines wines)
      (vui-newline)
      ;; Wines table
      (vui-text "Wines" :face 'bold)
      (vui-component 'wines-table
-                    :wines wines
-                    :scores scores)
+       :wines wines
+       :scores scores)
      (vui-newline)
      ;; Personal scores (editable)
      (vui-text "Personal Scores" :face 'bold)
      (vui-text "(Click name or score to edit)")
      (vui-component 'personal-scores-table
-                    :wines wines
-                    :participants participants
-                    :scores scores
-                    :on-score-change on-score-change
-                    :on-participant-change on-participant-change))))
+       :wines wines
+       :participants participants
+       :scores scores
+       :on-score-change on-score-change
+       :on-participant-change on-participant-change))))
 
 
 ;;; Demo Function

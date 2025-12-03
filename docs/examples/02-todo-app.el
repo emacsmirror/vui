@@ -20,14 +20,14 @@
         (done (plist-get todo :done)))
     (vui-hstack
      ;; Toggle checkbox
-     (vui-button (if done "[X]" "[ ]")
-                 :on-click (lambda () (funcall on-toggle id)))
+     (vui-button (if done "X" " ")
+       :on-click (lambda () (funcall on-toggle id)))
      ;; Todo text (strike-through if done)
      (vui-text text :face (when done 'shadow))
      ;; Delete button
-     (vui-button "[x]"
-                 :face 'error
-                 :on-click (lambda () (funcall on-delete id))))))
+     (vui-button "x"
+       :face 'error
+       :on-click (lambda () (funcall on-delete id))))))
 
 
 ;;; Todo Input Component
@@ -42,10 +42,10 @@
               :placeholder "What needs to be done?"
               :on-change (lambda (v) (vui-set-state :text v)))
    (vui-button "Add"
-               :on-click (lambda ()
-                           (unless (string-empty-p text)
-                             (funcall on-add text)
-                             (vui-set-state :text ""))))))
+     :on-click (lambda ()
+                 (unless (string-empty-p text)
+                   (funcall on-add text)
+                   (vui-set-state :text ""))))))
 
 
 ;;; Filter Buttons Component
@@ -55,14 +55,14 @@
   :render
   (vui-hstack :spacing 2
               (vui-button "All"
-                          :face (when (eq filter 'all) 'bold)
-                          :on-click (lambda () (funcall on-filter 'all)))
+                :face (when (eq filter 'all) 'bold)
+                :on-click (lambda () (funcall on-filter 'all)))
               (vui-button "Active"
-                          :face (when (eq filter 'active) 'bold)
-                          :on-click (lambda () (funcall on-filter 'active)))
+                :face (when (eq filter 'active) 'bold)
+                :on-click (lambda () (funcall on-filter 'active)))
               (vui-button "Completed"
-                          :face (when (eq filter 'completed) 'bold)
-                          :on-click (lambda () (funcall on-filter 'completed)))))
+                :face (when (eq filter 'completed) 'bold)
+                :on-click (lambda () (funcall on-filter 'completed)))))
 
 
 ;;; Todo Stats Component
@@ -74,7 +74,7 @@
          (done (length (seq-filter (lambda (td) (plist-get td :done)) todos)))
          (remaining (- total done)))
     (vui-text (format "%d items left, %d completed" remaining done)
-              :face 'font-lock-comment-face)))
+      :face 'font-lock-comment-face)))
 
 
 ;;; Main Todo App Component
@@ -126,8 +126,8 @@
                 ;; Filters
                 (vui-newline)
                 (vui-component 'todo-filters
-                               :filter filter
-                               :on-filter set-filter)
+                  :filter filter
+                  :on-filter set-filter)
 
                 ;; Todo list
                 (vui-newline)
@@ -136,10 +136,10 @@
                   (vui-list filtered
                             (lambda (todo)
                               (vui-component 'todo-item
-                                             :key (plist-get todo :id)
-                                             :todo todo
-                                             :on-toggle toggle-todo
-                                             :on-delete delete-todo))
+                                :key (plist-get todo :id)
+                                :todo todo
+                                :on-toggle toggle-todo
+                                :on-delete delete-todo))
                             (lambda (todo) (plist-get todo :id))))
 
                 ;; Stats
@@ -168,14 +168,15 @@
 
   :on-mount
   ;; Load saved todos on mount
-  (when (file-exists-p vui-example--todo-file)
-    (with-temp-buffer
-      (insert-file-contents vui-example--todo-file)
-      (let ((data (read (current-buffer))))
-        (vui-batch
-         (vui-set-state :todos (plist-get data :todos))
-         (vui-set-state :next-id (plist-get data :next-id))
-         (vui-set-state :loaded t)))))
+  (if (file-exists-p vui-example--todo-file)
+      (with-temp-buffer
+        (insert-file-contents vui-example--todo-file)
+        (let ((data (read (current-buffer))))
+          (vui-batch
+           (vui-set-state :todos (plist-get data :todos))
+           (vui-set-state :next-id (plist-get data :next-id))
+           (vui-set-state :loaded t))))
+    (vui-set-state :loaded t))
 
   :on-update
   ;; Save todos when they change
@@ -219,40 +220,42 @@
                              (seq-filter (lambda (td) (not (plist-get td :done)))
                                          todos)))))
 
-    (vui-vstack :spacing 1
-                ;; Header
-                (vui-text "Persistent Todo App" :face 'bold)
-                (vui-text "(todos auto-saved to disk)")
-                (vui-text (make-string 40 ?-))
+    (vui-vstack
+     :spacing 1
+     ;; Header
+     (vui-text "Persistent Todo App" :face 'bold)
+     (vui-text "(todos auto-saved to disk)")
+     (vui-text (make-string 40 ?-))
 
-                ;; Input
-                (vui-component 'todo-input :on-add add-todo)
+     ;; Input
+     (vui-component 'todo-input :on-add add-todo)
 
-                ;; Filters + Clear
-                (vui-newline)
-                (vui-hstack :spacing 2
-                            (vui-component 'todo-filters
-                                           :filter filter
-                                           :on-filter set-filter)
-                            (vui-button "[Clear completed]"
-                                        :face 'font-lock-comment-face
-                                        :on-click clear-completed))
+     ;; Filters + Clear
+     (vui-newline)
+     (vui-hstack
+      :spacing 2
+      (vui-component 'todo-filters
+        :filter filter
+        :on-filter set-filter)
+      (vui-button "Clear completed"
+        :face 'font-lock-comment-face
+        :on-click clear-completed))
 
-                ;; Todo list
-                (vui-newline)
-                (if (null filtered)
-                    (vui-text "(no items)" :face 'font-lock-comment-face)
-                  (vui-list filtered
-                            (lambda (todo)
-                              (vui-component 'todo-item
-                                             :key (plist-get todo :id)
-                                             :todo todo
-                                             :on-toggle toggle-todo
-                                             :on-delete delete-todo))
-                            (lambda (todo) (plist-get todo :id))))
+     ;; Todo list
+     (vui-newline)
+     (if (null filtered)
+         (vui-text "(no items)" :face 'font-lock-comment-face)
+       (vui-list filtered
+                 (lambda (todo)
+                   (vui-component 'todo-item
+                     :key (plist-get todo :id)
+                     :todo todo
+                     :on-toggle toggle-todo
+                     :on-delete delete-todo))
+                 (lambda (todo) (plist-get todo :id))))
 
-                ;; Stats
-                (vui-component 'todo-stats :todos todos))))
+     ;; Stats
+     (vui-component 'todo-stats :todos todos))))
 
 
 (defun vui-example-persistent-todo ()

@@ -51,12 +51,12 @@
          (vui-text (format "We'll contact you at %s" email))
          (vui-newline)
          (vui-button "Send Another"
-                     :on-click (lambda ()
-                                 (vui-batch
-                                  (vui-set-state :name "")
-                                  (vui-set-state :email "")
-                                  (vui-set-state :message "")
-                                  (vui-set-state :submitted nil)))))
+           :on-click (lambda ()
+                       (vui-batch
+                        (vui-set-state :name "")
+                        (vui-set-state :email "")
+                        (vui-set-state :message "")
+                        (vui-set-state :submitted nil)))))
 
       ;; Form
       (vui-vstack :spacing 1
@@ -71,7 +71,7 @@
                               :on-change (lambda (v) (vui-set-state :name v))))
                   (when (funcall get-error :name)
                     (vui-text (concat "         " (funcall get-error :name))
-                              :face 'error))
+                      :face 'error))
 
                   ;; Email field
                   (vui-hstack
@@ -81,7 +81,7 @@
                               :on-change (lambda (v) (vui-set-state :email v))))
                   (when (funcall get-error :email)
                     (vui-text (concat "         " (funcall get-error :email))
-                              :face 'error))
+                      :face 'error))
 
                   ;; Message field
                   (vui-hstack
@@ -91,11 +91,11 @@
                               :on-change (lambda (v) (vui-set-state :message v))))
                   (when (funcall get-error :message)
                     (vui-text (concat "         " (funcall get-error :message))
-                              :face 'error))
+                      :face 'error))
 
                   ;; Submit button
                   (vui-newline)
-                  (vui-button "[Submit]" :on-click submit)))))
+                  (vui-button "Submit" :on-click submit)))))
 
 
 (defun vui-example-contact-form ()
@@ -155,79 +155,80 @@
                    (when (funcall all-valid-p)
                      (message "Registration successful for: %s" username)))))
 
-    (vui-vstack :spacing 1
-                (vui-text "Create Account" :face 'bold)
-                (vui-text (make-string 35 ?-))
+    (vui-vstack
+     :spacing 1
+     (vui-text "Create Account" :face 'bold)
+     (vui-text (make-string 35 ?-))
 
-                ;; Username
-                (vui-hstack
-                 (vui-text "Username: ")
-                 (vui-field :value username
-                            :size 20
-                            :on-change (lambda (v)
-                                         (vui-batch
-                                          (funcall touch :username)
-                                          (vui-set-state :username v)))))
-                (when (funcall field-error :username)
-                  (vui-text (concat "          " (funcall field-error :username))
-                            :face 'error))
+     ;; Username
+     (vui-hstack
+      (vui-text "Username: ")
+      (vui-field :value username
+                 :size 20
+                 :on-change (lambda (v)
+                              (vui-batch
+                               (funcall touch :username)
+                               (vui-set-state :username v)))))
+     (when (funcall field-error :username)
+       (vui-text (concat "          " (funcall field-error :username))
+         :face 'error))
 
-                ;; Email
-                (vui-hstack
-                 (vui-text "Email:    ")
-                 (vui-field :value email
-                            :size 20
-                            :on-change (lambda (v)
-                                         (vui-batch
-                                          (funcall touch :email)
-                                          (vui-set-state :email v)))))
-                (when (funcall field-error :email)
-                  (vui-text (concat "          " (funcall field-error :email))
-                            :face 'error))
+     ;; Email
+     (vui-hstack
+      (vui-text "Email:    ")
+      (vui-field :value email
+                 :size 20
+                 :on-change (lambda (v)
+                              (vui-batch
+                               (funcall touch :email)
+                               (vui-set-state :email v)))))
+     (when (funcall field-error :email)
+       (vui-text (concat "          " (funcall field-error :email))
+         :face 'error))
 
-                ;; Password
-                (vui-hstack
-                 (vui-text "Password: ")
-                 (vui-field :value password
-                            :size 20
-                            :secret t
-                            :on-change (lambda (v)
-                                         (vui-batch
-                                          (funcall touch :password)
-                                          (vui-set-state :password v)))))
-                (when (funcall field-error :password)
-                  (vui-text (concat "          " (funcall field-error :password))
-                            :face 'error))
+     ;; Password
+     (vui-hstack
+      (vui-text "Password: ")
+      (vui-field :value password
+                 :size 20
+                 :secret t
+                 :on-change (lambda (v)
+                              (vui-batch
+                               (funcall touch :password)
+                               (vui-set-state :password v)))))
+     (when (funcall field-error :password)
+       (vui-text (concat "          " (funcall field-error :password))
+         :face 'error))
 
-                ;; Confirm Password
-                (vui-hstack
-                 (vui-text "Confirm:  ")
-                 (vui-field :value confirm
-                            :size 20
-                            :secret t
-                            :on-change (lambda (v)
-                                         (vui-batch
-                                          (funcall touch :confirm)
-                                          (vui-set-state :confirm v)))))
-                (when (funcall field-error :confirm)
-                  (vui-text (concat "          " (funcall field-error :confirm))
-                            :face 'error))
+     ;; Confirm Password
+     (vui-hstack
+      (vui-text "Confirm:  ")
+      (vui-field :value confirm
+                 :size 20
+                 :secret t
+                 :on-change (lambda (v)
+                              (vui-batch
+                               (funcall touch :confirm)
+                               (vui-set-state :confirm v)))))
+     (when (funcall field-error :confirm)
+       (vui-text (concat "          " (funcall field-error :confirm))
+         :face 'error))
 
-                ;; Terms checkbox
-                (vui-newline)
-                (vui-checkbox :checked agree
-                              :label "I agree to the terms and conditions"
-                              :on-change (lambda (v)
-                                           (vui-batch
-                                            (funcall touch :agree)
-                                            (vui-set-state :agree v))))
-                (when (funcall field-error :agree)
-                  (vui-text (funcall field-error :agree) :face 'error))
+     ;; Terms checkbox
+     (vui-newline)
+     (vui-checkbox :checked agree
+                   :label "I agree to the terms and conditions"
+                   :on-change (lambda (v)
+                                (vui-batch
+                                 (funcall touch :agree)
+                                 (vui-set-state :agree v))))
+     (when (funcall field-error :agree)
+       (vui-text (funcall field-error :agree) :face 'error))
 
-                ;; Submit
-                (vui-newline)
-                (vui-button "[Create Account]"
-                            :on-click submit))))
+     ;; Submit
+     (vui-newline)
+     (vui-button "Create Account"
+       :on-click submit))))
 
 
 (defun vui-example-registration ()
@@ -243,77 +244,82 @@
   :render
   (let ((name (plist-get data :name))
         (email (plist-get data :email)))
-    (vui-vstack :spacing 1
-                (vui-text "Step 1: Basic Info" :face 'bold)
-                (vui-text (make-string 30 ?-))
+    (vui-vstack
+     :spacing 1
+     (vui-text "Step 1: Basic Info" :face 'bold)
+     (vui-text (make-string 30 ?-))
 
-                (vui-hstack
-                 (vui-text "Name:  ")
-                 (vui-field :value (or name "")
-                            :size 25
-                            :on-change (lambda (v)
-                                         (funcall on-next
-                                                  (plist-put (copy-sequence data) :name v)
-                                                  nil))))
+     (vui-hstack
+      (vui-text "Name:  ")
+      (vui-field :value (or name "")
+                 :size 25
+                 :on-change (lambda (v)
+                              (funcall on-next
+                                       (plist-put (copy-sequence data) :name v)
+                                       nil))))
 
-                (vui-hstack
-                 (vui-text "Email: ")
-                 (vui-field :value (or email "")
-                            :size 25
-                            :on-change (lambda (v)
-                                         (funcall on-next
-                                                  (plist-put (copy-sequence data) :email v)
-                                                  nil))))
+     (vui-hstack
+      (vui-text "Email: ")
+      (vui-field :value (or email "")
+                 :size 25
+                 :on-change (lambda (v)
+                              (funcall on-next
+                                       (plist-put (copy-sequence data) :email v)
+                                       nil))))
 
-                (vui-newline)
-                (vui-button "[Next →]"
-                            :on-click (lambda ()
-                                        (when (and name email
-                                                   (not (string-empty-p name))
-                                                   (not (string-empty-p email)))
-                                          (funcall on-next data t)))))))
+     (vui-newline)
+     (vui-button "Next →"
+       :on-click (lambda ()
+                   (when (and name email
+                              (not (string-empty-p name))
+                              (not (string-empty-p email)))
+                     (funcall on-next data t)))))))
 
 
 (defcomponent wizard-step-2 (data on-next on-back)
   :render
   (let ((plan (plist-get data :plan)))
-    (vui-vstack :spacing 1
-                (vui-text "Step 2: Choose Plan" :face 'bold)
-                (vui-text (make-string 30 ?-))
+    (vui-vstack
+     :spacing 1
+     (vui-text "Step 2: Choose Plan" :face 'bold)
+     (vui-text (make-string 30 ?-))
 
-                (vui-select :value (or plan "free")
-                            :options '(("free" . "Free - $0/mo")
-                                       ("pro" . "Pro - $10/mo")
-                                       ("team" . "Team - $25/mo"))
-                            :on-change (lambda (v)
-                                         (funcall on-next
-                                                  (plist-put (copy-sequence data) :plan v)
-                                                  nil)))
+     (vui-select
+      :value (or plan "free")
+      :options '(("free" . "Free - $0/mo")
+                 ("pro" . "Pro - $10/mo")
+                 ("team" . "Team - $25/mo"))
+      :on-change (lambda (v)
+                   (funcall on-next
+                            (plist-put (copy-sequence data) :plan v)
+                            nil)))
 
-                (vui-newline)
-                (vui-hstack :spacing 2
-                            (vui-button "[← Back]" :on-click on-back)
-                            (vui-button "[Next →]"
-                                        :on-click (lambda ()
-                                                    (funcall on-next data t)))))))
+     (vui-newline)
+     (vui-hstack
+      :spacing 2
+      (vui-button "← Back" :on-click on-back)
+      (vui-button "Next →"
+        :on-click (lambda ()
+                    (funcall on-next data t)))))))
 
 
 (defcomponent wizard-step-3 (data on-submit on-back)
   :render
-  (vui-vstack :spacing 1
-              (vui-text "Step 3: Review" :face 'bold)
-              (vui-text (make-string 30 ?-))
+  (vui-vstack
+   :spacing 1
+   (vui-text "Step 3: Review" :face 'bold)
+   (vui-text (make-string 30 ?-))
 
-              (vui-text (format "Name:  %s" (plist-get data :name)))
-              (vui-text (format "Email: %s" (plist-get data :email)))
-              (vui-text (format "Plan:  %s" (or (plist-get data :plan) "free")))
+   (vui-text (format "Name:  %s" (plist-get data :name)))
+   (vui-text (format "Email: %s" (plist-get data :email)))
+   (vui-text (format "Plan:  %s" (or (plist-get data :plan) "free")))
 
-              (vui-newline)
-              (vui-hstack :spacing 2
-                          (vui-button "[← Back]" :on-click on-back)
-                          (vui-button "[Submit]"
-                                      :face 'bold
-                                      :on-click on-submit))))
+   (vui-newline)
+   (vui-hstack :spacing 2
+               (vui-button "← Back" :on-click on-back)
+               (vui-button "Submit"
+                 :face 'bold
+                 :on-click on-submit))))
 
 
 (defcomponent wizard-complete (data)
@@ -345,13 +351,13 @@
      ;; Progress indicator
      (vui-hstack :spacing 1
                  (vui-text (if (>= step 1) "[1]" " 1 ")
-                           :face (when (= step 1) 'bold))
+                   :face (when (= step 1) 'bold))
                  (vui-text "—")
                  (vui-text (if (>= step 2) "[2]" " 2 ")
-                           :face (when (= step 2) 'bold))
+                   :face (when (= step 2) 'bold))
                  (vui-text "—")
                  (vui-text (if (>= step 3) "[3]" " 3 ")
-                           :face (when (= step 3) 'bold)))
+                   :face (when (= step 3) 'bold)))
      (vui-newline)
 
      ;; Step content
@@ -360,18 +366,18 @@
        (vui-component 'wizard-complete :data data))
       ((= step 1)
        (vui-component 'wizard-step-1
-                      :data data
-                      :on-next go-next))
+         :data data
+         :on-next go-next))
       ((= step 2)
        (vui-component 'wizard-step-2
-                      :data data
-                      :on-next go-next
-                      :on-back go-back))
+         :data data
+         :on-next go-next
+         :on-back go-back))
       ((= step 3)
        (vui-component 'wizard-step-3
-                      :data data
-                      :on-submit submit
-                      :on-back go-back))))))
+         :data data
+         :on-submit submit
+         :on-back go-back))))))
 
 
 (defun vui-example-wizard ()
@@ -388,7 +394,7 @@
   (vui-vstack
    (vui-hstack
     (vui-button (if expanded "▼" "▶")
-                :on-click on-toggle)
+      :on-click on-toggle)
     (vui-text (format " %s" title) :face 'bold))
    (when expanded
      (vui-box content :padding-left 2))))
@@ -414,79 +420,83 @@
                                       (plist-put (copy-sequence settings)
                                                  key val)))))
 
-    (vui-vstack :spacing 1
-                (vui-text "Settings" :face 'bold)
-                (vui-text (make-string 40 ?=))
+    (vui-vstack
+     :spacing 1
+     (vui-text "Settings" :face 'bold)
+     (vui-text (make-string 40 ?=))
 
-                ;; General section
-                (vui-component 'settings-section
-                               :title "General"
-                               :expanded (plist-get sections :general)
-                               :on-toggle (lambda () (funcall toggle-section :general))
-                               :content
-                               (vui-vstack :spacing 1
-                                           (vui-hstack
-                                            (vui-text "Theme: ")
-                                            (vui-select
-                                             :value (plist-get settings :theme)
-                                             :options '(("light" . "Light")
-                                                        ("dark" . "Dark")
-                                                        ("system" . "System"))
-                                             :on-change (lambda (v)
-                                                          (funcall set-setting :theme v))))
-                                           (vui-hstack
-                                            (vui-text "Font size: ")
-                                            (vui-select
-                                             :value (number-to-string
-                                                     (plist-get settings :font-size))
-                                             :options '(("12" . "Small (12)")
-                                                        ("14" . "Medium (14)")
-                                                        ("16" . "Large (16)"))
-                                             :on-change (lambda (v)
-                                                          (funcall set-setting :font-size
-                                                                   (string-to-number v)))))))
+     ;; General section
+     (vui-component 'settings-section
+       :title "General"
+       :expanded (plist-get sections :general)
+       :on-toggle (lambda () (funcall toggle-section :general))
+       :content
+       (vui-vstack
+        :spacing 1
+        (vui-hstack
+         (vui-text "Theme: ")
+         (vui-select
+          :value (plist-get settings :theme)
+          :options '(("light" . "Light")
+                     ("dark" . "Dark")
+                     ("system" . "System"))
+          :on-change (lambda (v)
+                       (funcall set-setting :theme v))))
+        (vui-hstack
+         (vui-text "Font size: ")
+         (vui-select
+          :value (number-to-string
+                  (plist-get settings :font-size))
+          :options '(("12" . "Small (12)")
+                     ("14" . "Medium (14)")
+                     ("16" . "Large (16)"))
+          :on-change (lambda (v)
+                       (funcall set-setting :font-size
+                                (string-to-number v)))))))
 
-                ;; Notifications section
-                (vui-component 'settings-section
-                               :title "Notifications"
-                               :expanded (plist-get sections :notifications)
-                               :on-toggle (lambda () (funcall toggle-section :notifications))
-                               :content
-                               (vui-vstack :spacing 1
-                                           (vui-checkbox
-                                            :checked (plist-get settings :email-notify)
-                                            :label "Email notifications"
-                                            :on-change (lambda (v)
-                                                         (funcall set-setting :email-notify v)))
-                                           (vui-checkbox
-                                            :checked (plist-get settings :push-notify)
-                                            :label "Push notifications"
-                                            :on-change (lambda (v)
-                                                         (funcall set-setting :push-notify v)))))
+     ;; Notifications section
+     (vui-component 'settings-section
+       :title "Notifications"
+       :expanded (plist-get sections :notifications)
+       :on-toggle (lambda () (funcall toggle-section :notifications))
+       :content
+       (vui-vstack
+        :spacing 1
+        (vui-checkbox
+         :checked (plist-get settings :email-notify)
+         :label "Email notifications"
+         :on-change (lambda (v)
+                      (funcall set-setting :email-notify v)))
+        (vui-checkbox
+         :checked (plist-get settings :push-notify)
+         :label "Push notifications"
+         :on-change (lambda (v)
+                      (funcall set-setting :push-notify v)))))
 
-                ;; Privacy section
-                (vui-component 'settings-section
-                               :title "Privacy"
-                               :expanded (plist-get sections :privacy)
-                               :on-toggle (lambda () (funcall toggle-section :privacy))
-                               :content
-                               (vui-vstack :spacing 1
-                                           (vui-checkbox
-                                            :checked (plist-get settings :share-data)
-                                            :label "Share usage data"
-                                            :on-change (lambda (v)
-                                                         (funcall set-setting :share-data v)))
-                                           (vui-checkbox
-                                            :checked (plist-get settings :public-profile)
-                                            :label "Public profile"
-                                            :on-change (lambda (v)
-                                                         (funcall set-setting :public-profile v)))))
+     ;; Privacy section
+     (vui-component 'settings-section
+       :title "Privacy"
+       :expanded (plist-get sections :privacy)
+       :on-toggle (lambda () (funcall toggle-section :privacy))
+       :content
+       (vui-vstack
+        :spacing 1
+        (vui-checkbox
+         :checked (plist-get settings :share-data)
+         :label "Share usage data"
+         :on-change (lambda (v)
+                      (funcall set-setting :share-data v)))
+        (vui-checkbox
+         :checked (plist-get settings :public-profile)
+         :label "Public profile"
+         :on-change (lambda (v)
+                      (funcall set-setting :public-profile v)))))
 
-                ;; Save button
-                (vui-newline)
-                (vui-button "[Save Settings]"
-                            :on-click (lambda ()
-                                        (message "Settings saved: %S" settings))))))
+     ;; Save button
+     (vui-newline)
+     (vui-button "Save Settings"
+       :on-click (lambda ()
+                   (message "Settings saved: %S" settings))))))
 
 
 (defun vui-example-settings ()

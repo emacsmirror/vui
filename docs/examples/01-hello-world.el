@@ -29,8 +29,8 @@
    (vui-text (format "Clicked: %d times" count))
    (vui-newline)
    (vui-button "Click me!"
-               :on-click (lambda ()
-                           (vui-set-state :count (1+ count))))))
+     :on-click (lambda ()
+                 (vui-set-state :count (1+ count))))))
 
 (defun vui-example-counter ()
   "Run the Click Counter example."
@@ -58,8 +58,8 @@
   :render
   (vui-fragment
    (vui-button (if expanded "▼" "▶")
-               :on-click (lambda ()
-                           (vui-set-state :expanded (not expanded))))
+     :on-click (lambda ()
+                 (vui-set-state :expanded (not expanded))))
    (vui-text (format " %s" title))
    (vui-newline)
    (when expanded
@@ -82,10 +82,11 @@
   :render
   (vui-fragment
    (vui-text "Enter your name: ")
-   (vui-field :value name
-              :size 20
-              :on-change (lambda (new-value)
-                           (vui-set-state :name new-value)))
+   (vui-field
+    :value name
+    :size 20
+    :on-change (lambda (new-value)
+                 (vui-set-state :name new-value)))
    (vui-newline)
    (vui-newline)
    (vui-text (if (string-empty-p name)
@@ -105,9 +106,9 @@
   :state ((done nil))
   :render
   (vui-hstack
-   (vui-button (if done "[X]" "[ ]")
-               :on-click (lambda ()
-                           (vui-set-state :done (not done))))
+   (vui-button (if done "X" " ")
+     :on-click (lambda ()
+                 (vui-set-state :done (not done))))
    (vui-text text :face (when done 'shadow))))
 
 (defcomponent todo-items-demo ()
