@@ -1,6 +1,12 @@
 #+TITLE: vui.el
 #+AUTHOR: vui.el
 
+#+begin_html
+<p align="center">
+  <img alt="version" src="https://img.shields.io/github/v/tag/d12frosted/vui.el?label=version"/>
+</p>
+#+end_html
+
 *Declarative, component-based UI framework for Emacs*
 
 Build reactive UIs in Emacs using familiar patterns from React and other modern UI frameworks. Define components with local state, props, lifecycle hooks, and automatic re-rendering.
