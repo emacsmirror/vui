@@ -146,6 +146,18 @@ Clone this repository and add to your load-path:
 | [[file:docs/guide/10-dev-tools.org][Developer Tools]]                        | Inspector, profiler, debugging   |
 | [[file:docs/reference/api.org][API Reference]]                          | Complete function reference      |
 
+* Deep Dives
+
+In-depth tutorials walking through real-world usage:
+
+- [[https://www.d12frosted.io/posts/2025-12-01-vui-quickstart][Quickstart]] — 15-minute introduction to props, state, and composition
+- [[https://www.d12frosted.io/posts/2025-12-02-vui-real-ui][Building a File Browser]] — Practical walkthrough of component decomposition
+- [[https://www.d12frosted.io/posts/2025-12-03-vui-context-and-composition][Context and Composition]] — Prop drilling solutions and composition patterns
+- [[https://www.d12frosted.io/posts/2025-12-04-vui-hooks-deep-dive][Lifecycle Hooks]] — on-mount, on-unmount, use-effect, use-async and cleanup patterns
+- [[https://www.d12frosted.io/posts/2025-12-05-vui-optimisation-hooks][Optimisation Hooks]] — use-ref, use-callback, use-memo and when to use them
+- [[https://www.d12frosted.io/posts/2025-12-06-vui-under-the-hood][Under the Hood]] — Virtual nodes, instances, reconciliation, and the render cycle
+- [[https://www.d12frosted.io/posts/2025-12-07-vui-patterns-and-pitfalls][Patterns and Pitfalls]] — Practical patterns and common mistakes
+
 * Examples
 
 See [[file:docs/examples/][docs/examples/]] for complete, runnable examples:
