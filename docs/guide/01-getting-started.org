@@ -6,14 +6,14 @@
 
 *vui.el* is a declarative, component-based UI library for Emacs. If you've used
 React, Vue, or similar frameworks, you'll feel right at home. If not, don't
-worry—the concepts are simple:
+worry - the concepts are simple:
 
 - *Declarative*: Describe /what/ your UI should look like, not /how/ to update it
 - *Component-based*: Build UIs from small, reusable pieces
 - *Reactive*: When state changes, the UI updates automatically
 
 #+begin_quote
-Think of vui.el as "React for Emacs buffers"—but designed specifically for
+Think of vui.el as "React for Emacs buffers" - but designed specifically for
 Emacs's text-based, keyboard-driven environment.
 #+end_quote
 
@@ -90,12 +90,12 @@ Now you have a button! Press =RET= on it to increment the counter.
 
 ** What's New Here?
 
-- =:state ((count 0))= — Defines local state with =count= starting at 0
-- =vui-fragment= — Groups multiple elements without adding wrapper text
-- =vui-newline= — Inserts a line break
-- =vui-button= — Creates a clickable button
-- =:on-click= — Callback when button is activated
-- =vui-set-state= — Updates state and triggers re-render
+- =:state ((count 0))= - Defines local state with =count= starting at 0
+- =vui-fragment= - Groups multiple elements without adding wrapper text
+- =vui-newline= - Inserts a line break
+- =vui-button= - Creates a clickable button
+- =:on-click= - Callback when button is activated
+- =vui-set-state= - Updates state and triggers re-render
 
 The magic: when you call =vui-set-state=, vui.el automatically re-renders
 the component with the new state. You never manually update the buffer.
@@ -215,9 +215,9 @@ See [[file:../examples/01-hello-world.el][examples/01-hello-world.el]] for the s
 
 Now that you understand the basics, explore:
 
-- [[file:02-components.org][Components]] — Deep dive into defcomponent, props, and state
-- [[file:03-primitives.org][Primitives]] — All the built-in UI elements
-- [[file:04-layout.org][Layout]] — Arrange elements with hstack, vstack, tables
-- [[file:05-hooks.org][Hooks]] — Side effects, refs, and memoization
+- [[file:02-components.org][Components]] - Deep dive into defcomponent, props, and state
+- [[file:03-primitives.org][Primitives]] - All the built-in UI elements
+- [[file:04-layout.org][Layout]] - Arrange elements with hstack, vstack, tables
+- [[file:05-hooks.org][Hooks]] - Side effects, refs, and memoization
 
 Or jump straight to [[file:../examples/03-todo-app.el][a complete todo app example]].

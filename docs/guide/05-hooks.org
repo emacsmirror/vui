@@ -5,7 +5,7 @@
 Hooks let you add side effects, mutable references, and memoization to your
 components. They're inspired by React Hooks but adapted for Emacs Lisp.
 
-* Side Effects — =use-effect=
+* Side Effects - =use-effect=
 
 =use-effect= runs code after rendering, optionally with cleanup.
 
@@ -125,7 +125,7 @@ Cleanup runs:
     (vui-text (format "Page: %s" title))))
 #+end_src
 
-* Mutable References — =use-ref=
+* Mutable References - =use-ref=
 
 =use-ref= creates a mutable value that persists across renders without causing
 re-renders when changed.
@@ -200,7 +200,7 @@ re-renders when changed.
     (vui-text (format "Count: %d" count))))
 #+end_src
 
-* Memoized Callbacks — =use-callback=
+* Memoized Callbacks - =use-callback=
 
 =use-callback= returns a stable function reference that only changes when
 dependencies change.
@@ -244,7 +244,7 @@ as a prop.
                    :on-click handle-click)))  ; Same reference if count unchanged
 #+end_src
 
-* Memoized Values — =use-memo=
+* Memoized Values - =use-memo=
 
 =use-memo= caches expensive computations, only recomputing when dependencies
 change.
@@ -285,7 +285,7 @@ Use =use-memo= when:
     (vui-table :rows sorted)))
 #+end_src
 
-* Async Data Loading — =use-async=
+* Async Data Loading - =use-async=
 
 =use-async= provides async data loading with loading/error states and caching.
 It uses a callback-based API (like JavaScript Promises) to support both
@@ -511,7 +511,7 @@ To make operations truly non-blocking, use one of the async mechanisms below.
 
 *** Using with use-async
 
-=use-async= works with any of these — just call =resolve= or =reject= when done:
+=use-async= works with any of these - just call =resolve= or =reject= when done:
 
 #+begin_src elisp
 ;; With async.el (child Emacs for CPU work)
@@ -543,7 +543,7 @@ caching, triggering re-renders), while the underlying async mechanism handles
 the *actual async execution*. This separation lets you choose the right tool
 for each job.
 
-* Async Context — =vui-with-async-context=
+* Async Context - =vui-with-async-context=
 
 When calling =vui-set-state= from asynchronous callbacks like timers, process
 sentinels, or hooks, you need to restore the component context. The
@@ -671,11 +671,11 @@ Use =vui-with-async-context= when you need =vui-set-state= in:
 - Any fire-and-forget callback
 
 You do NOT need it for:
-- Widget callbacks (buttons, fields) — these handle context automatically
-- =use-async= loaders — =resolve=/=reject= handle context automatically
-- Code directly in =:render= — already in component context
+- Widget callbacks (buttons, fields) - these handle context automatically
+- =use-async= loaders - =resolve=/=reject= handle context automatically
+- Code directly in =:render= - already in component context
 
-* Async Callbacks with Arguments — =vui-async-callback=
+* Async Callbacks with Arguments - =vui-async-callback=
 
 When an async operation passes data to your callback, use =vui-async-callback=
 instead of =vui-with-async-context=. It works the same way but accepts arguments.
@@ -859,5 +859,5 @@ Include all values used in the effect/callback:
 
 * What's Next?
 
-- [[file:06-context.org][Context]] — Share data without prop drilling
-- [[file:07-lifecycle.org][Lifecycle]] — on-mount, on-update, on-unmount
+- [[file:06-context.org][Context]] - Share data without prop drilling
+- [[file:07-lifecycle.org][Lifecycle]] - on-mount, on-update, on-unmount

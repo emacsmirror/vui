@@ -9,9 +9,9 @@ components.
 * What is a Component?
 
 A component is a reusable piece of UI with its own:
-- *Props* — Input data from parent
-- *State* — Internal data that can change over time
-- *Render function* — Describes what to display
+- *Props* - Input data from parent
+- *State* - Internal data that can change over time
+- *Render function* - Describes what to display
 
 #+begin_src elisp
 (defcomponent my-component (prop1 prop2)   ; Props
@@ -46,7 +46,7 @@ The name must be a symbol. By convention, use lowercase with hyphens:
 
 ** Props (Arguments)
 
-Props are the component's public interface—data passed from parent components.
+Props are the component's public interface - data passed from parent components.
 
 *** Simple Props
 
@@ -167,7 +167,7 @@ The =:render= body defines what the component displays. It must return a vnode
 
 ** Pure Rendering
 
-The render function should be /pure/—it should only compute the UI based on
+The render function should be /pure/ - it should only compute the UI based on
 props and state, with no side effects.
 
 #+begin_src elisp
@@ -392,6 +392,6 @@ multiple buffers:
 
 * What's Next?
 
-- [[file:03-primitives.org][Primitives]] — Learn about all built-in UI elements
-- [[file:07-lifecycle.org][Lifecycle]] — on-mount, on-update, on-unmount hooks
-- [[file:06-context.org][Context]] — Share data without prop drilling
+- [[file:03-primitives.org][Primitives]] - Learn about all built-in UI elements
+- [[file:07-lifecycle.org][Lifecycle]] - on-mount, on-update, on-unmount hooks
+- [[file:06-context.org][Context]] - Share data without prop drilling

@@ -12,7 +12,7 @@ This is usually fine, but can become slow with:
 - Complex computations in render
 - Deeply nested component trees
 
-* Skipping Renders — =:should-update=
+* Skipping Renders - =:should-update=
 
 Use =:should-update= to skip unnecessary re-renders:
 
@@ -32,10 +32,10 @@ Use =:should-update= to skip unnecessary re-renders:
 ** Arguments Available
 
 In =:should-update=, you have access to:
-- =props= — New props
-- =state= — New state
-- =prev-props= — Previous props
-- =prev-state= — Previous state
+- =props= - New props
+- =state= - New state
+- =prev-props= - Previous props
+- =prev-state= - Previous state
 
 Return =t= to render, =nil= to skip.
 
@@ -66,7 +66,7 @@ Return =t= to render, =nil= to skip.
   :render ...)
 #+end_src
 
-* Memoization — =use-memo=
+* Memoization - =use-memo=
 
 Cache expensive computations:
 
@@ -110,7 +110,7 @@ For performance, use =eq= comparison when appropriate:
   ...)
 #+end_src
 
-* Stable Callbacks — =use-callback=
+* Stable Callbacks - =use-callback=
 
 Prevent unnecessary child re-renders by keeping callback references stable:
 
@@ -255,5 +255,5 @@ The report shows time spent in each phase per component.
 
 * What's Next?
 
-- [[file:10-dev-tools.org][Developer Tools]] — Debugging and inspection
-- [[file:05-hooks.org][Hooks]] — use-memo and use-callback details
+- [[file:10-dev-tools.org][Developer Tools]] - Debugging and inspection
+- [[file:05-hooks.org][Hooks]] - use-memo and use-callback details

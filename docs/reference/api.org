@@ -38,10 +38,10 @@ In all forms:
 - =children= for nested content
 
 In =:on-update= and =:should-update= additionally:
-- =props= — Current props plist
-- =state= — Current state plist
-- =prev-props= — Previous props plist
-- =prev-state= — Previous state plist
+- =props= - Current props plist
+- =state= - Current state plist
+- =prev-props= - Previous props plist
+- =prev-state= - Previous state plist
 
 *** Example
 
@@ -437,8 +437,8 @@ interactive buttons, dynamic column widths, and real-time computed statistics.
 Render a list of items with proper reconciliation.
 
 - ITEMS :: List of items to render
-- RENDER-FN :: =(lambda (item) vnode)= — renders each item
-- KEY-FN :: =(lambda (item) key)= — extracts key (default: identity)
+- RENDER-FN :: =(lambda (item) vnode)= - renders each item
+- KEY-FN :: =(lambda (item) key)= - extracts key (default: identity)
 - =:vertical= :: If non-nil (default t), adds newlines between items
 
 By default, items are rendered vertically (with newlines between them).
@@ -564,7 +564,7 @@ Use this when you need =vui-set-state= in:
 #+end_src
 
 *Note:* You do NOT need this for widget callbacks (buttons, fields) or
-=use-async= loaders — those handle context automatically.
+=use-async= loaders - those handle context automatically.
 
 ** vui-async-callback
 
@@ -597,8 +597,8 @@ Use this when an async operation passes data to your callback:
 #+end_src
 
 *Compare with =vui-with-async-context=:*
-- =vui-with-async-context= — fire-and-forget callbacks (timers, hooks)
-- =vui-async-callback= — callbacks that receive data from async operations
+- =vui-with-async-context= - fire-and-forget callbacks (timers, hooks)
+- =vui-async-callback= - callbacks that receive data from async operations
 
 * Hooks
 
@@ -671,9 +671,9 @@ Create memoized callback that stays stable when DEPS unchanged.
 Like =use-callback= with configurable comparison.
 
 COMPARE options:
-- =eq= — identity comparison (fast)
-- =equal= — structural comparison (default)
-- function — custom =(lambda (old-deps new-deps) bool)=
+- =eq= - identity comparison (fast)
+- =equal= - structural comparison (default)
+- function - custom =(lambda (old-deps new-deps) bool)=
 
 ** use-memo
 
@@ -708,7 +708,7 @@ Like =use-memo= with configurable comparison.
 Asynchronously load data using LOADER, identified by KEY.
 
 - KEY :: Cache key; when it changes, a new load is triggered
-- LOADER :: =(lambda (resolve reject) ...)= — call =resolve= with data or =reject= with error
+- LOADER :: =(lambda (resolve reject) ...)= - call =resolve= with data or =reject= with error
 
 Returns a plist:
 
@@ -739,9 +739,9 @@ Returns a plist:
 Define a context.
 
 Creates:
-- =NAME-context= — The context object
-- =NAME-provider= — Function to provide value
-- =use-NAME= — Hook to consume value
+- =NAME-context= - The context object
+- =NAME-provider= - Function to provide value
+- =use-NAME= - Hook to consume value
 
 #+begin_src elisp
 (defcontext theme 'light "Current UI theme.")
@@ -799,11 +799,11 @@ Reset error state for boundary ID, allowing retry.
 | =vui-last-error=              | nil    | Last error: (TYPE ERROR CONTEXT)    |
 
 Handler values:
-- =warn= — Display warning (default)
-- =message= — Display in echo area
-- =signal= — Re-signal error
-- =ignore= — Silently ignore
-- function — Custom =(lambda (hook-name err instance) ...)=
+- =warn= - Display warning (default)
+- =message= - Display in echo area
+- =signal= - Re-signal error
+- =ignore= - Silently ignore
+- function - Custom =(lambda (hook-name err instance) ...)=
 
 ** Performance
 

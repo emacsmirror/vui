@@ -32,7 +32,7 @@ Consider an app where many nested components need access to the current user:
 
 This is tedious and makes components harder to reuse. Context solves this.
 
-* Creating Context — =defcontext=
+* Creating Context - =defcontext=
 
 #+begin_src elisp
 (defcontext user nil
@@ -64,7 +64,7 @@ Wrap your component tree with the provider:
 
 Everything inside the provider can access the context.
 
-* Consuming Context — =use-NAME=
+* Consuming Context - =use-NAME=
 
 Use the auto-generated hook to access context:
 
@@ -178,7 +178,7 @@ options:
 
 * Nested Providers
 
-Providers can be nested—inner providers override outer ones:
+Providers can be nested - inner providers override outer ones:
 
 #+begin_src elisp
 (defcontext level 0)
@@ -288,5 +288,5 @@ When no provider is found, context returns the default value:
 
 * What's Next?
 
-- [[file:07-lifecycle.org][Lifecycle]] — Component lifecycle hooks
-- [[file:05-hooks.org][Hooks]] — use-effect, use-ref, use-memo
+- [[file:07-lifecycle.org][Lifecycle]] - Component lifecycle hooks
+- [[file:05-hooks.org][Hooks]] - use-effect, use-ref, use-memo

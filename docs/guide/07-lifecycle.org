@@ -13,7 +13,7 @@ when it mounts, updates, or unmounts.
 | =:on-update=  | After re-renders (not first)          |
 | =:on-unmount= | Before component is removed           |
 
-* Mount — =:on-mount=
+* Mount - =:on-mount=
 
 Runs once after the component is first rendered:
 
@@ -47,7 +47,7 @@ The mount hook receives =props= and =state=:
   (vui-text name))
 #+end_src
 
-* Update — =:on-update=
+* Update - =:on-update=
 
 Runs after every re-render (but not the first render):
 
@@ -80,10 +80,10 @@ The update hook receives current and previous values:
 #+end_src
 
 The available variables are:
-- =props= — Current props
-- =state= — Current state
-- =prev-props= — Previous props
-- =prev-state= — Previous state
+- =props= - Current props
+- =state= - Current state
+- =prev-props= - Previous props
+- =prev-state= - Previous state
 
 ** Comparing Changes
 
@@ -99,7 +99,7 @@ The available variables are:
   (vui-text (format "Data: %s" data)))
 #+end_src
 
-* Unmount — =:on-unmount=
+* Unmount - =:on-unmount=
 
 Runs before the component is removed from the tree:
 
@@ -281,5 +281,5 @@ See [[file:08-error-handling.org][Error Handling]] for details.
 
 * What's Next?
 
-- [[file:08-error-handling.org][Error Handling]] — Error boundaries and handlers
-- [[file:05-hooks.org][Hooks]] — use-effect for more complex scenarios
+- [[file:08-error-handling.org][Error Handling]] - Error boundaries and handlers
+- [[file:05-hooks.org][Hooks]] - use-effect for more complex scenarios

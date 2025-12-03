@@ -7,7 +7,7 @@ represent the fundamental elements that can be rendered to a buffer.
 
 * Text Display
 
-** =vui-text= — Display Text
+** =vui-text= - Display Text
 
 The most basic primitive. Displays text content.
 
@@ -46,7 +46,7 @@ For convenience, plain strings are automatically treated as text:
  "More text")
 #+end_src
 
-** =vui-newline= — Line Break
+** =vui-newline= - Line Break
 
 Inserts a newline character:
 
@@ -63,7 +63,7 @@ Line 1
 Line 2
 #+end_example
 
-** =vui-space= — Horizontal Space
+** =vui-space= - Horizontal Space
 
 Inserts whitespace:
 
@@ -77,7 +77,7 @@ Inserts whitespace:
 All interactive elements (buttons, fields, checkboxes, selects) support keyboard
 navigation with =TAB= / =S-TAB= to move between them.
 
-** =vui-button= — Clickable Button
+** =vui-button= - Clickable Button
 
 Creates a button that responds to user activation (=RET= or mouse click).
 Buttons are rendered with brackets: =LABEL= becomes =[LABEL]=.
@@ -144,7 +144,7 @@ Output:
 This is particularly useful in table cells with =:truncate= enabled, where the
 column width is passed automatically to button children.
 
-** =vui-field= — Text Input
+** =vui-field= - Text Input
 
 Creates an editable text field:
 
@@ -199,7 +199,7 @@ In event handlers, use =vui-field-value= to read the current field value:
                              (message "Searching for: %s" value))))))
 #+end_src
 
-** =vui-checkbox= — Toggle Checkbox
+** =vui-checkbox= - Toggle Checkbox
 
 Creates a checkbox that can be toggled:
 
@@ -228,7 +228,7 @@ Creates a checkbox that can be toggled:
  (vui-text task-name))
 #+end_src
 
-** =vui-select= — Dropdown Selection
+** =vui-select= - Dropdown Selection
 
 Creates a selection from a list of options:
 
@@ -274,7 +274,7 @@ For display-value pairs, use cons cells:
 
 * Grouping Elements
 
-** =vui-fragment= — Invisible Group
+** =vui-fragment= - Invisible Group
 
 Groups multiple elements without adding any visible output:
 
@@ -410,5 +410,5 @@ Here's a component using multiple primitives:
 
 * What's Next?
 
-- [[file:04-layout.org][Layout]] — Arrange primitives with hstack, vstack, box, and table
-- [[file:02-components.org][Components]] — Creating and composing components
+- [[file:04-layout.org][Layout]] - Arrange primitives with hstack, vstack, box, and table
+- [[file:02-components.org][Components]] - Creating and composing components

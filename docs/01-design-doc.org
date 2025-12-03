@@ -2724,7 +2724,7 @@ Example:
 
 ** Purpose
 
-Context solves the "prop drilling" problem — passing data through many layers of components that don't need it, just to reach a deeply nested component.
+Context solves the "prop drilling" problem - passing data through many layers of components that don't need it, just to reach a deeply nested component.
 
 Without context:
 
@@ -3886,7 +3886,7 @@ Errors can occur at different phases:
 
 ** Error Boundary Pattern
 
-Like React, we support error boundaries — components that catch errors in their subtree:
+Like React, we support error boundaries - components that catch errors in their subtree:
 
 #+begin_src elisp
 (cl-defstruct (vui-vnode-error-boundary (:include vui-vnode)

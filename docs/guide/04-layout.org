@@ -5,7 +5,7 @@
 Layout primitives help you arrange UI elements in structured ways: horizontally,
 vertically, in boxes, or in tables.
 
-* Horizontal Layout — =vui-hstack=
+* Horizontal Layout - =vui-hstack=
 
 Arranges children horizontally with optional spacing:
 
@@ -55,7 +55,7 @@ Output:
 [Save]  [Cancel]  [Delete]
 #+end_example
 
-* Vertical Layout — =vui-vstack=
+* Vertical Layout - =vui-vstack=
 
 Arranges children vertically with optional spacing and indentation:
 
@@ -133,7 +133,7 @@ Tasks:
   • Deploy
 #+end_example
 
-* Fixed-Width Box — =vui-box=
+* Fixed-Width Box - =vui-box=
 
 Creates a fixed-width container with text alignment:
 
@@ -206,7 +206,7 @@ Output:
    Phone: [                    ]
 #+end_example
 
-* Tables — =vui-table=
+* Tables - =vui-table=
 
 Creates formatted tables with columns, rows, and optional borders.
 
@@ -379,7 +379,7 @@ See =docs/examples/05-wine-tasting.el= for a complete example with:
 - Dynamic column width calculation
 - Real-time statistics updates
 
-* Dynamic Lists — =vui-list=
+* Dynamic Lists - =vui-list=
 
 Renders a list of items using a render function:
 
@@ -485,5 +485,5 @@ Layouts can be nested for complex structures:
 
 * What's Next?
 
-- [[file:05-hooks.org][Hooks]] — use-effect, use-ref, use-memo
-- [[file:03-primitives.org][Primitives]] — Basic UI elements
+- [[file:05-hooks.org][Hooks]] - use-effect, use-ref, use-memo
+- [[file:03-primitives.org][Primitives]] - Basic UI elements

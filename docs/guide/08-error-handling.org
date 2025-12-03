@@ -264,5 +264,5 @@ Isolate independent features:
 
 * What's Next?
 
-- [[file:09-performance.org][Performance]] — Optimization techniques
-- [[file:10-dev-tools.org][Developer Tools]] — Debugging and inspection
+- [[file:09-performance.org][Performance]] - Optimization techniques
+- [[file:10-dev-tools.org][Developer Tools]] - Debugging and inspection

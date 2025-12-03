@@ -316,5 +316,5 @@ vui--root-instance
 
 * What's Next?
 
-- [[file:../reference/api.org][API Reference]] — Complete function reference
-- [[file:../examples/][Examples]] — Full application examples
+- [[file:../reference/api.org][API Reference]] - Complete function reference
+- [[file:../examples/][Examples]] - Full application examples
