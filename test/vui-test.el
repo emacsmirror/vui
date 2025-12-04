@@ -582,7 +582,21 @@ Buttons are widget.el push-buttons, so we use widget-apply."
       :render (vui-text (format "Value: %s" value)))
     (with-temp-buffer
       (vui-render (vui-component 'test-prop-to-state :initial-value "hello"))
-      (expect (buffer-string) :to-equal "Value: hello"))))
+      (expect (buffer-string) :to-equal "Value: hello")))
+
+  (it "supports optional docstring"
+    (defcomponent test-with-docstring (name)
+      "A component with documentation."
+      :render (vui-text name))
+    (let ((def (vui--get-component 'test-with-docstring)))
+      (expect (vui-component-def-docstring def)
+              :to-equal "A component with documentation.")))
+
+  (it "works without docstring"
+    (defcomponent test-no-docstring (name)
+      :render (vui-text name))
+    (let ((def (vui--get-component 'test-no-docstring)))
+      (expect (vui-component-def-docstring def) :to-be nil))))
 
 (describe "vui-component"
   (it "creates a component vnode"

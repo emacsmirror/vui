@@ -534,6 +534,7 @@ Returns a list of instances."
 (cl-defstruct (vui-component-def (:constructor vui-component-def--create))
   "Definition of a component type."
   name              ; Symbol identifying this component type
+  docstring         ; Optional documentation string
   props-spec        ; List of prop names (symbols)
   initial-state-fn  ; (lambda (props) state) or nil
   render-fn         ; (lambda (props state) vnode)
@@ -620,7 +621,8 @@ Each entry is a vui-context-binding.")
   "Define a component named NAME.
 
 ARGS is a list of prop names the component accepts.
-BODY contains keyword sections:
+BODY may optionally start with a documentation string, followed by
+keyword sections:
   :state ((var initial) ...) - local state variables
   :on-mount FORM - called after first render (optional)
   :on-update FORM - called after re-render (optional)
@@ -634,6 +636,7 @@ have access to `prev-props' and `prev-state'.
 
 Example:
   (defcomponent greeting (name)
+    \"A greeting component that displays a name with a counter.\"
     :state ((count 0))
     :on-mount (message \"Mounted: %s\" name)
     :on-update (when (not (equal prev-props --props--))
@@ -646,14 +649,16 @@ Example:
       (vui-text (format \"Hello, %s! Count: %d\" name count))
       (vui-button \"+\" :on-click (lambda () (vui-set-state \\='count (1+ count))))))"
   (declare (indent 2))
-  (let ((state-spec nil)
-        (render-form nil)
-        (on-mount-form nil)
-        (on-update-form nil)
-        (on-unmount-form nil)
-        (should-update-form nil)
-        (should-update-provided nil)
-        (rest body))
+  (let* ((docstring (when (stringp (car body)) (car body)))
+         (body-rest (if docstring (cdr body) body))
+         (state-spec nil)
+         (render-form nil)
+         (on-mount-form nil)
+         (on-update-form nil)
+         (on-unmount-form nil)
+         (should-update-form nil)
+         (should-update-provided nil)
+         (rest body-rest))
     ;; Parse keyword arguments
     (while rest
       (pcase (car rest)
@@ -705,6 +710,7 @@ Example:
            (vui--register-component
             (vui-component-def--create
              :name ',name
+             :docstring ,docstring
              :props-spec ',args
              :initial-state-fn ,(if state-spec
                                     `(lambda (--props--)
