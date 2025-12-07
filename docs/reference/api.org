@@ -153,14 +153,15 @@ Group multiple vnodes without adding structure.
 
 Create a clickable button. By default, buttons render with brackets: =LABEL= becomes =[LABEL]=.
 
-| Property         | Type     | Description                                |
-|------------------+----------+--------------------------------------------|
-| =:on-click=      | function | Click handler                              |
-| =:face=          | symbol   | Button face                                |
-| =:disabled=      | boolean  | Disable button                             |
-| =:max-width=     | integer  | Max width including brackets (truncates)   |
-| =:no-decoration= | boolean  | Render without brackets                    |
-| =:key=           | any      | Reconciliation key                         |
+| Property         | Type        | Description                                |
+|------------------+-------------+--------------------------------------------|
+| =:on-click=      | function    | Click handler                              |
+| =:face=          | symbol      | Button face                                |
+| =:disabled=      | boolean     | Disable button                             |
+| =:max-width=     | integer     | Max width including brackets (truncates)   |
+| =:no-decoration= | boolean     | Render without brackets                    |
+| =:help-echo=     | string/nil  | Tooltip (nil disables for performance)     |
+| =:key=           | any         | Reconciliation key                         |
 
 #+begin_src elisp
 (vui-button "Click me"
@@ -175,6 +176,9 @@ Create a clickable button. By default, buttons render with brackets: =LABEL= bec
 ;; Plain button (no brackets)
 (vui-button "Click here" :no-decoration t)
 ;; Renders: Click here
+
+;; Disable tooltip for performance (useful with many buttons)
+(vui-button "Item" :help-echo nil)
 #+end_src
 
 ** vui-field

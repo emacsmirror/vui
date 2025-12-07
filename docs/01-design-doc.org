@@ -1097,7 +1097,7 @@ Opens *vui-state* buffer."
 | Function                          | Description        | Key Props                                       |
 |-----------------------------------+--------------------+-------------------------------------------------|
 | =(vui-text CONTENT &rest PROPS)=  | Plain text         | =:face=, =:key=                                 |
-| =(vui-button LABEL &rest PROPS)=  | Clickable button   | =:on-click=, =:face=, =:disabled=, =:max-width=, =:no-decoration= |
+| =(vui-button LABEL &rest PROPS)=  | Clickable button   | =:on-click=, =:face=, =:disabled=, =:max-width=, =:no-decoration=, =:help-echo= |
 | =(vui-field &key VALUE SIZE ...)= | Editable field     | =:on-change=, =:on-submit=, =:secret=           |
 | =(vui-checkbox &rest PROPS)=      | Boolean toggle     | =:checked=, =:on-change=, =:label=              |
 | =(vui-select &rest PROPS)=        | Dropdown selection | =:value=, =:options=, =:on-change=, =:prompt=   |

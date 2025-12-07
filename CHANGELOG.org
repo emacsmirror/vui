@@ -11,6 +11,7 @@ The format is based on [[https://keepachangelog.com/en/1.1.0/][Keep a Changelog]
 
 - Optional docstring support in =defcomponent= macro.
 - =:no-decoration= option for =vui-button= to render without brackets.
+- =:help-echo= option for =vui-button= to control tooltip. Setting to =nil= disables tooltip generation, providing ~2x faster button creation for bulk rendering.
 
 ** Fixed
 

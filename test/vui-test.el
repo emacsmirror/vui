@@ -133,7 +133,26 @@ Buttons are widget.el push-buttons, so we use widget-apply."
     (with-temp-buffer
       ;; max-width 3: just "..."
       (vui-render (vui-button "hello world" :max-width 3 :no-decoration t))
-      (expect (buffer-string) :to-equal "..."))))
+      (expect (buffer-string) :to-equal "...")))
+
+  ;; Help-echo support (performance optimization)
+  (it "defaults help-echo to :default"
+    (let ((node (vui-button "Click")))
+      (expect (vui-vnode-button-help-echo node) :to-equal :default)))
+
+  (it "accepts help-echo nil to disable tooltip"
+    (let ((node (vui-button "Click" :help-echo nil)))
+      (expect (vui-vnode-button-help-echo node) :to-be nil)))
+
+  (it "accepts custom help-echo string"
+    (let ((node (vui-button "Click" :help-echo "Custom tooltip")))
+      (expect (vui-vnode-button-help-echo node) :to-equal "Custom tooltip")))
+
+  (it "renders with help-echo nil"
+    (with-temp-buffer
+      ;; Should render without error
+      (vui-render (vui-button "Click" :help-echo nil))
+      (expect (buffer-string) :to-equal "[Click]"))))
 
 (describe "vui-field"
   (it "creates a field vnode"

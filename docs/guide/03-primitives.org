@@ -98,6 +98,7 @@ Output:
 | =:disabled=      | When non-nil, button is inactive         |
 | =:max-width=     | Maximum width including brackets         |
 | =:no-decoration= | When non-nil, render without brackets    |
+| =:help-echo=     | Tooltip text (nil to disable for perf)   |
 | =:key=           | Key for reconciliation                   |
 
 *** Disabled Button
@@ -161,6 +162,23 @@ The button still supports keyboard navigation (=TAB=), truncation (=:max-width=)
 #+begin_src elisp
 (vui-button "Very long text" :max-width 10 :no-decoration t)
 ;; Output: "Very lo..." (10 chars)
+#+end_src
+
+*** Performance: Disabling Tooltip
+
+When rendering many buttons (hundreds or thousands), the default tooltip generation adds overhead. Set =:help-echo nil= to disable tooltips and improve performance:
+
+#+begin_src elisp
+;; For bulk button rendering (e.g., in large lists)
+(vui-button item-name
+            :on-click on-click
+            :help-echo nil)  ; ~2x faster button creation
+#+end_src
+
+You can also provide a custom tooltip string:
+
+#+begin_src elisp
+(vui-button "Submit" :help-echo "Click to submit form")
 #+end_src
 
 ** =vui-field= - Text Input
@@ -349,7 +367,7 @@ Fragments can be nested and will be flattened:
 | =vui-text=     | Display text         | =:face=, =:key=                        |
 | =vui-newline=  | Line break           | =:key=                                 |
 | =vui-space=    | Whitespace           | width, =:key=                          |
-| =vui-button=   | Clickable button     | =:on-click=, =:disabled=, =:max-width=, =:no-decoration= |
+| =vui-button=   | Clickable button     | =:on-click=, =:disabled=, =:max-width=, =:no-decoration=, =:help-echo= |
 | =vui-field=    | Text input           | =:value=, =:on-change=                 |
 | =vui-checkbox= | Toggle checkbox      | =:checked=, =:on-change=               |
 | =vui-select=   | Dropdown selection   | =:value=, =:options=, =:on-change=     |

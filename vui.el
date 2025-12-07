@@ -422,8 +422,9 @@ Returns a list of instances."
   on-click
   face
   disabled-p
-  max-width      ; For truncation in constrained spaces
-  no-decoration) ; When t, render without [ ] brackets
+  max-width       ; For truncation in constrained spaces
+  no-decoration   ; When t, render without [ ] brackets
+  (help-echo :default)) ; :default = widget default, nil = disabled, string = custom
 
 ;; Primitive: editable text field
 (cl-defstruct (vui-vnode-field (:include vui-vnode)
@@ -763,9 +764,11 @@ PROPS is a plist accepting :face, :key, and other text properties."
 (defun vui-button (label &rest props)
   "Create a button vnode with LABEL and optional PROPS.
 PROPS is a plist accepting :on-click, :face, :disabled, :max-width,
-:no-decoration, :key.
+:no-decoration, :help-echo, :key.
 When :max-width is set, the button will truncate its label to fit.
-When :no-decoration is t, the button renders without [ ] brackets."
+When :no-decoration is t, the button renders without [ ] brackets.
+When :help-echo is nil, tooltip is disabled (improves performance).
+When :help-echo is a string, that string is used as tooltip."
   (declare (indent 1))
   (vui-vnode-button--create
    :label label
@@ -774,6 +777,9 @@ When :no-decoration is t, the button renders without [ ] brackets."
    :disabled-p (plist-get props :disabled)
    :max-width (plist-get props :max-width)
    :no-decoration (plist-get props :no-decoration)
+   :help-echo (if (plist-member props :help-echo)
+                  (plist-get props :help-echo)
+                :default)
    :key (plist-get props :key)))
 
 (cl-defun vui-field (&key value size placeholder on-change on-submit key face secret)
@@ -2338,6 +2344,7 @@ Handles :truncate and overflow:
                                :disabled-p (vui-vnode-button-disabled-p cell)
                                :max-width declared-width
                                :no-decoration (vui-vnode-button-no-decoration cell)
+                               :help-echo (vui-vnode-button-help-echo cell)
                                :key (vui-vnode-key cell))
                             cell)))
                     (pcase align
@@ -2423,11 +2430,10 @@ Handles :truncate and overflow:
            (disabled (vui-vnode-button-disabled-p vnode))
            (max-width (vui-vnode-button-max-width vnode))
            (no-decoration (vui-vnode-button-no-decoration vnode))
+           (help-echo (vui-vnode-button-help-echo vnode))
            ;; Pre-truncate label before passing to widget
            ;; Widget adds brackets (2 chars) unless no-decoration
-           ;; Minimum button is [...] = 5 chars (or ... = 3 for no-decoration)
            (bracket-width (if no-decoration 0 2))
-           (min-width (if no-decoration 3 5))
            (display-label
             (if (and max-width (> (+ (string-width label) bracket-width) max-width))
                 ;; Need truncation: available = max-width - brackets - 3 (...)
@@ -2444,15 +2450,19 @@ Handles :truncate and overflow:
            ;; Temporarily override bracket variables for no-decoration buttons
            (widget-push-button-prefix (if no-decoration "" widget-push-button-prefix))
            (widget-push-button-suffix (if no-decoration "" widget-push-button-suffix)))
-      (widget-create 'push-button
-                     :tag display-label
-                     :button-face (or face 'link)
-                     :inactive (when disabled t)
-                     :action (lambda (_widget &optional _event)
-                               (when wrapped-click
-                                 (let ((vui--current-instance captured-instance)
-                                       (vui--root-instance captured-root))
-                                   (funcall wrapped-click)))))))
+      (apply #'widget-create 'push-button
+             :tag display-label
+             :button-face (or face 'link)
+             :inactive (when disabled t)
+             :action (lambda (_widget &optional _event)
+                       (when wrapped-click
+                         (let ((vui--current-instance captured-instance)
+                               (vui--root-instance captured-root))
+                           (funcall wrapped-click))))
+             ;; Only pass :help-echo when explicitly set (not :default)
+             ;; nil disables tooltip (performance), string sets custom tooltip
+             (unless (eq help-echo :default)
+               (list :help-echo help-echo)))))
 
    ;; Checkbox
    ((vui-vnode-checkbox-p vnode)
