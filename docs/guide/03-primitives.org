@@ -77,7 +77,7 @@ All interactive elements (buttons, fields, checkboxes, selects) support keyboard
 
 ** =vui-button= - Clickable Button
 
-Creates a button that responds to user activation (=RET= or mouse click). Buttons are rendered with brackets: =LABEL= becomes =[LABEL]=.
+Creates a button that responds to user activation (=RET= or mouse click). By default, buttons are rendered with brackets: =LABEL= becomes =[LABEL]=.
 
 #+begin_src elisp
 (vui-button "Click me"
@@ -91,13 +91,14 @@ Output:
 
 *** Button Properties
 
-| Property      | Description                              |
-|---------------+------------------------------------------|
-| =:on-click=   | Callback when activated                  |
-| =:face=       | Button face/styling                      |
-| =:disabled=   | When non-nil, button is inactive         |
-| =:max-width=  | Maximum width including brackets         |
-| =:key=        | Key for reconciliation                   |
+| Property         | Description                              |
+|------------------+------------------------------------------|
+| =:on-click=      | Callback when activated                  |
+| =:face=          | Button face/styling                      |
+| =:disabled=      | When non-nil, button is inactive         |
+| =:max-width=     | Maximum width including brackets         |
+| =:no-decoration= | When non-nil, render without brackets    |
+| =:key=           | Key for reconciliation                   |
 
 *** Disabled Button
 
@@ -139,6 +140,28 @@ Output:
 
 This is particularly useful in table cells with =:truncate= enabled, where the
 column width is passed automatically to button children.
+
+*** Plain Button (No Decoration)
+
+When =:no-decoration= is set, the button renders without brackets. This is useful for custom UI where you want clickable text without the default bracket styling:
+
+#+begin_src elisp
+(vui-button "Click here"
+            :on-click #'action
+            :no-decoration t)
+#+end_src
+
+Output:
+#+begin_example
+Click here
+#+end_example
+
+The button still supports keyboard navigation (=TAB=), truncation (=:max-width=), and all other properties. When combined with =:max-width=, truncation calculations don't include bracket overhead:
+
+#+begin_src elisp
+(vui-button "Very long text" :max-width 10 :no-decoration t)
+;; Output: "Very lo..." (10 chars)
+#+end_src
 
 ** =vui-field= - Text Input
 
@@ -326,7 +349,7 @@ Fragments can be nested and will be flattened:
 | =vui-text=     | Display text         | =:face=, =:key=                        |
 | =vui-newline=  | Line break           | =:key=                                 |
 | =vui-space=    | Whitespace           | width, =:key=                          |
-| =vui-button=   | Clickable button     | =:on-click=, =:disabled=, =:max-width= |
+| =vui-button=   | Clickable button     | =:on-click=, =:disabled=, =:max-width=, =:no-decoration= |
 | =vui-field=    | Text input           | =:value=, =:on-change=                 |
 | =vui-checkbox= | Toggle checkbox      | =:checked=, =:on-change=               |
 | =vui-select=   | Dropdown selection   | =:value=, =:options=, =:on-change=     |

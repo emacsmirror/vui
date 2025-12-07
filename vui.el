@@ -421,7 +421,8 @@ Returns a list of instances."
   on-click
   face
   disabled-p
-  max-width)  ; For truncation in constrained spaces
+  max-width      ; For truncation in constrained spaces
+  no-decoration) ; When t, render without [ ] brackets
 
 ;; Primitive: editable text field
 (cl-defstruct (vui-vnode-field (:include vui-vnode)
@@ -760,8 +761,10 @@ PROPS is a plist accepting :face, :key, and other text properties."
 
 (defun vui-button (label &rest props)
   "Create a button vnode with LABEL and optional PROPS.
-PROPS is a plist accepting :on-click, :face, :disabled, :max-width, :key.
-When :max-width is set, the button will truncate its label to fit."
+PROPS is a plist accepting :on-click, :face, :disabled, :max-width,
+:no-decoration, :key.
+When :max-width is set, the button will truncate its label to fit.
+When :no-decoration is t, the button renders without [ ] brackets."
   (declare (indent 1))
   (vui-vnode-button--create
    :label label
@@ -769,6 +772,7 @@ When :max-width is set, the button will truncate its label to fit."
    :face (plist-get props :face)
    :disabled-p (plist-get props :disabled)
    :max-width (plist-get props :max-width)
+   :no-decoration (plist-get props :no-decoration)
    :key (plist-get props :key)))
 
 (cl-defun vui-field (&key value size placeholder on-change on-submit key face secret)
@@ -2332,6 +2336,7 @@ Handles :truncate and overflow:
                                :face (vui-vnode-button-face cell)
                                :disabled-p (vui-vnode-button-disabled-p cell)
                                :max-width declared-width
+                               :no-decoration (vui-vnode-button-no-decoration cell)
                                :key (vui-vnode-key cell))
                             cell)))
                     (pcase align
@@ -2416,22 +2421,28 @@ Handles :truncate and overflow:
            (face (vui-vnode-button-face vnode))
            (disabled (vui-vnode-button-disabled-p vnode))
            (max-width (vui-vnode-button-max-width vnode))
+           (no-decoration (vui-vnode-button-no-decoration vnode))
            ;; Pre-truncate label before passing to widget
-           ;; Widget adds brackets, so account for 2 chars
-           ;; Minimum button is [...] = 5 chars
+           ;; Widget adds brackets (2 chars) unless no-decoration
+           ;; Minimum button is [...] = 5 chars (or ... = 3 for no-decoration)
+           (bracket-width (if no-decoration 0 2))
+           (min-width (if no-decoration 3 5))
            (display-label
-            (if (and max-width (> (+ (string-width label) 2) max-width))
-                ;; Need truncation: available = max-width - 2 (brackets) - 3 (...)
-                (let ((available (- max-width 5)))
+            (if (and max-width (> (+ (string-width label) bracket-width) max-width))
+                ;; Need truncation: available = max-width - brackets - 3 (...)
+                (let ((available (- max-width bracket-width 3)))
                   (if (<= available 0)
-                      "..."  ; Just show [...] for very small widths
+                      "..."  ; Just show [...] or ... for very small widths
                     (concat (substring label 0 (min available (length label))) "...")))
               label))
            ;; Capture instance context for callback
            (captured-instance vui--current-instance)
            (captured-root vui--root-instance)
            ;; Wrap callback with error handling
-           (wrapped-click (vui--wrap-event-callback "on-click" on-click captured-instance)))
+           (wrapped-click (vui--wrap-event-callback "on-click" on-click captured-instance))
+           ;; Temporarily override bracket variables for no-decoration buttons
+           (widget-push-button-prefix (if no-decoration "" widget-push-button-prefix))
+           (widget-push-button-suffix (if no-decoration "" widget-push-button-suffix)))
       (widget-create 'push-button
                      :tag display-label
                      :button-face (or face 'link)

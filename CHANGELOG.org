@@ -10,6 +10,7 @@ The format is based on [[https://keepachangelog.com/en/1.1.0/][Keep a Changelog]
 ** Added
 
 - Optional docstring support in =defcomponent= macro.
+- =:no-decoration= option for =vui-button= to render without brackets.
 
 ** Fixed
 

@@ -105,7 +105,35 @@ Buttons are widget.el push-buttons, so we use widget-apply."
       ;; [...] or [x...] or just [...]
       (vui-render (vui-button "hello world" :max-width 5))
       ;; At minimum should show [...] (5 chars)
-      (expect (buffer-string) :to-equal "[...]"))))
+      (expect (buffer-string) :to-equal "[...]")))
+
+  ;; No-decoration support
+  (it "accepts no-decoration property"
+    (let ((node (vui-button "Click" :no-decoration t)))
+      (expect (vui-vnode-button-no-decoration node) :to-be-truthy)))
+
+  (it "renders without brackets when no-decoration is set"
+    (with-temp-buffer
+      (vui-render (vui-button "Click me" :no-decoration t))
+      (expect (buffer-string) :to-equal "Click me")))
+
+  (it "renders with brackets by default"
+    (with-temp-buffer
+      (vui-render (vui-button "Click me"))
+      (expect (buffer-string) :to-equal "[Click me]")))
+
+  (it "truncates no-decoration button without bracket overhead"
+    (with-temp-buffer
+      ;; "hello world" = 11 chars, must fit in 10
+      ;; Without brackets: "hello w..." = 10 chars (7 + 3)
+      (vui-render (vui-button "hello world" :max-width 10 :no-decoration t))
+      (expect (buffer-string) :to-equal "hello w...")))
+
+  (it "handles very small max-width for no-decoration button"
+    (with-temp-buffer
+      ;; max-width 3: just "..."
+      (vui-render (vui-button "hello world" :max-width 3 :no-decoration t))
+      (expect (buffer-string) :to-equal "..."))))
 
 (describe "vui-field"
   (it "creates a field vnode"
