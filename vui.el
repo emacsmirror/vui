@@ -1,8 +1,9 @@
 ;;; vui.el --- Declarative, component-based UI library -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2025 Boris
+;; Copyright (C) 2025 Boris Buliga
 
-;; Author: Boris
+;; Author: Boris Buliga <boris@d12frosted.io>
+;; Maintainer: Boris Buliga <boris@d12frosted.io>
 ;; URL: https://github.com/d12frosted/vui.el
 ;; Version: 0.1.0
 ;; Package-Requires: ((emacs "29.1"))
