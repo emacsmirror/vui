@@ -1,0 +1,33 @@
+#+title: Changelog
+#+author: Boris Buliga
+
+All notable changes to this project will be documented in this file.
+
+The format is based on [[https://keepachangelog.com/en/1.1.0/][Keep a Changelog]], and this project adheres to [[https://semver.org/spec/v2.0.0.html][Semantic Versioning]].
+
+* Unreleased
+
+** Added
+
+- Optional docstring support in =defcomponent= macro.
+
+** Fixed
+
+- Propagate indent through =hstack= to nested =vstack=. When a =vstack= was nested inside an =hstack=, the indent context from parent =vstacks= was lost, causing subsequent lines to render without proper indentation.
+- Accumulate indent correctly in nested =vstacks=.
+
+* v1.0.0-rc.1 - 2025-12-03
+
+Initial release candidate.
+
+** Added
+
+- Core rendering engine with virtual DOM diffing and reconciliation.
+- Component system with =defcomponent= macro.
+- Hooks: =use-state=, =use-effect=, =use-memo=, =use-ref=, =use-async=.
+- Layout primitives: =vui-vstack=, =vui-hstack=, =vui-box=, =vui-table=.
+- Basic elements: =vui-text=, =vui-button=, =vui-link=, =vui-input=, =vui-checkbox=, =vui-select=.
+- Utility components: =vui-fragment=, =vui-newline=, =vui-space=, =vui-list=, =vui-error-boundary=.
+- Async utilities: =vui-async-callback=, =vui-with-async-context=.
+- Debug mode with =vui-debug-mode=.
+- Comprehensive documentation and examples.
