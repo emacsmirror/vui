@@ -3367,4 +3367,234 @@ Buttons are widget.el push-buttons, so we use widget-apply."
                      (vui-text "inner2")))))
       (expect (buffer-string) :to-equal "  outer\n  h:inner1\n    inner2"))))
 
+(describe "vstack/hstack with empty-rendering children"
+  ;; Components that render to nil should not affect spacing
+
+  (it "vstack skips separator for nil children at creation time"
+    ;; This already works - nil is filtered by remq
+    (with-temp-buffer
+      (vui-render (vui-vstack :spacing 1
+                   (vui-text "A")
+                   nil
+                   (vui-text "B")))
+      (expect (buffer-string) :to-equal "A\n\nB")))
+
+  (it "vstack skips separator for component that renders nil"
+    ;; Component returning nil should not create extra blank lines
+    (defcomponent vui-test--nil-widget ()
+      :render
+      (when nil  ; always nil
+        (vui-text "never shown")))
+
+    (defcomponent vui-test--nil-root ()
+      :render
+      (vui-vstack :spacing 1
+        (vui-component 'vui-test--nil-widget)
+        (vui-text "A")
+        (vui-component 'vui-test--nil-widget)
+        (vui-text "B")
+        (vui-component 'vui-test--nil-widget)))
+
+    (let ((buf (get-buffer-create "*test-nil-widget*")))
+      (unwind-protect
+          (progn
+            (vui-mount (vui-component 'vui-test--nil-root) "*test-nil-widget*")
+            (with-current-buffer buf
+              ;; Should be "A\n\nB" - single blank line from spacing, no extras
+              (expect (buffer-string) :to-equal "A\n\nB")))
+        (kill-buffer buf))))
+
+  (it "vstack handles multiple consecutive nil-rendering components"
+    (defcomponent vui-test--nil-widget-2 ()
+      :render
+      (when nil (vui-text "never")))
+
+    (defcomponent vui-test--multi-nil-root ()
+      :render
+      (vui-vstack :spacing 0
+        (vui-text "Start")
+        (vui-component 'vui-test--nil-widget-2)
+        (vui-component 'vui-test--nil-widget-2)
+        (vui-component 'vui-test--nil-widget-2)
+        (vui-text "End")))
+
+    (let ((buf (get-buffer-create "*test-multi-nil*")))
+      (unwind-protect
+          (progn
+            (vui-mount (vui-component 'vui-test--multi-nil-root) "*test-multi-nil*")
+            (with-current-buffer buf
+              ;; Should be "Start\nEnd" - no extra lines from nil components
+              (expect (buffer-string) :to-equal "Start\nEnd")))
+        (kill-buffer buf))))
+
+  (it "vstack handles nil-rendering component at start"
+    (defcomponent vui-test--nil-start-root ()
+      :render
+      (vui-vstack :spacing 0
+        (vui-component 'vui-test--nil-widget-2)
+        (vui-text "Content")))
+
+    (let ((buf (get-buffer-create "*test-nil-start*")))
+      (unwind-protect
+          (progn
+            (vui-mount (vui-component 'vui-test--nil-start-root) "*test-nil-start*")
+            (with-current-buffer buf
+              ;; Should be just "Content" - no leading newline
+              (expect (buffer-string) :to-equal "Content")))
+        (kill-buffer buf))))
+
+  (it "vstack handles nil-rendering component at end"
+    (defcomponent vui-test--nil-end-root ()
+      :render
+      (vui-vstack :spacing 0
+        (vui-text "Content")
+        (vui-component 'vui-test--nil-widget-2)))
+
+    (let ((buf (get-buffer-create "*test-nil-end*")))
+      (unwind-protect
+          (progn
+            (vui-mount (vui-component 'vui-test--nil-end-root) "*test-nil-end*")
+            (with-current-buffer buf
+              ;; Should be just "Content" - no trailing newline
+              (expect (buffer-string) :to-equal "Content")))
+        (kill-buffer buf))))
+
+  (it "hstack skips separator for component that renders nil"
+    (defcomponent vui-test--hstack-nil-root ()
+      :render
+      (vui-hstack :spacing 1
+        (vui-component 'vui-test--nil-widget-2)
+        (vui-text "A")
+        (vui-component 'vui-test--nil-widget-2)
+        (vui-text "B")
+        (vui-component 'vui-test--nil-widget-2)))
+
+    (let ((buf (get-buffer-create "*test-hstack-nil*")))
+      (unwind-protect
+          (progn
+            (vui-mount (vui-component 'vui-test--hstack-nil-root) "*test-hstack-nil*")
+            (with-current-buffer buf
+              ;; Should be "A B" - single space from spacing, no extras
+              (expect (buffer-string) :to-equal "A B")))
+        (kill-buffer buf))))
+
+  (it "vstack with indent skips separator for nil-rendering component"
+    (defcomponent vui-test--indent-nil-root ()
+      :render
+      (vui-vstack :spacing 0 :indent 2
+        (vui-text "A")
+        (vui-component 'vui-test--nil-widget-2)
+        (vui-text "B")))
+
+    (let ((buf (get-buffer-create "*test-indent-nil*")))
+      (unwind-protect
+          (progn
+            (vui-mount (vui-component 'vui-test--indent-nil-root) "*test-indent-nil*")
+            (with-current-buffer buf
+              ;; Should be "  A\n  B" - proper indent, no extra lines
+              (expect (buffer-string) :to-equal "  A\n  B")))
+        (kill-buffer buf))))
+
+  ;; Additional edge cases with spacing
+  (it "vstack with spacing handles nil-rendering component at start"
+    (defcomponent vui-test--spacing-nil-start ()
+      :render
+      (vui-vstack :spacing 1
+        (vui-component 'vui-test--nil-widget-2)
+        (vui-text "A")
+        (vui-text "B")))
+
+    (let ((buf (get-buffer-create "*test-spacing-nil-start*")))
+      (unwind-protect
+          (progn
+            (vui-mount (vui-component 'vui-test--spacing-nil-start) "*test-spacing-nil-start*")
+            (with-current-buffer buf
+              ;; Should be "A\n\nB" - no leading blank line
+              (expect (buffer-string) :to-equal "A\n\nB")))
+        (kill-buffer buf))))
+
+  (it "vstack with spacing handles nil-rendering component at end"
+    (defcomponent vui-test--spacing-nil-end ()
+      :render
+      (vui-vstack :spacing 1
+        (vui-text "A")
+        (vui-text "B")
+        (vui-component 'vui-test--nil-widget-2)))
+
+    (let ((buf (get-buffer-create "*test-spacing-nil-end*")))
+      (unwind-protect
+          (progn
+            (vui-mount (vui-component 'vui-test--spacing-nil-end) "*test-spacing-nil-end*")
+            (with-current-buffer buf
+              ;; Should be "A\n\nB" - no trailing blank line
+              (expect (buffer-string) :to-equal "A\n\nB")))
+        (kill-buffer buf))))
+
+  (it "hstack handles nil-rendering component at start"
+    (defcomponent vui-test--hstack-nil-start ()
+      :render
+      (vui-hstack :spacing 1
+        (vui-component 'vui-test--nil-widget-2)
+        (vui-text "A")
+        (vui-text "B")))
+
+    (let ((buf (get-buffer-create "*test-hstack-nil-start*")))
+      (unwind-protect
+          (progn
+            (vui-mount (vui-component 'vui-test--hstack-nil-start) "*test-hstack-nil-start*")
+            (with-current-buffer buf
+              ;; Should be "A B" - no leading space
+              (expect (buffer-string) :to-equal "A B")))
+        (kill-buffer buf))))
+
+  (it "hstack handles nil-rendering component at end"
+    (defcomponent vui-test--hstack-nil-end ()
+      :render
+      (vui-hstack :spacing 1
+        (vui-text "A")
+        (vui-text "B")
+        (vui-component 'vui-test--nil-widget-2)))
+
+    (let ((buf (get-buffer-create "*test-hstack-nil-end*")))
+      (unwind-protect
+          (progn
+            (vui-mount (vui-component 'vui-test--hstack-nil-end) "*test-hstack-nil-end*")
+            (with-current-buffer buf
+              ;; Should be "A B" - no trailing space
+              (expect (buffer-string) :to-equal "A B")))
+        (kill-buffer buf))))
+
+  (it "vstack handles all nil-rendering components"
+    (defcomponent vui-test--all-nil ()
+      :render
+      (vui-vstack :spacing 1
+        (vui-component 'vui-test--nil-widget-2)
+        (vui-component 'vui-test--nil-widget-2)
+        (vui-component 'vui-test--nil-widget-2)))
+
+    (let ((buf (get-buffer-create "*test-all-nil*")))
+      (unwind-protect
+          (progn
+            (vui-mount (vui-component 'vui-test--all-nil) "*test-all-nil*")
+            (with-current-buffer buf
+              ;; Should be empty
+              (expect (buffer-string) :to-equal "")))
+        (kill-buffer buf))))
+
+  (it "hstack handles all nil-rendering components"
+    (defcomponent vui-test--hstack-all-nil ()
+      :render
+      (vui-hstack :spacing 1
+        (vui-component 'vui-test--nil-widget-2)
+        (vui-component 'vui-test--nil-widget-2)))
+
+    (let ((buf (get-buffer-create "*test-hstack-all-nil*")))
+      (unwind-protect
+          (progn
+            (vui-mount (vui-component 'vui-test--hstack-all-nil) "*test-hstack-all-nil*")
+            (with-current-buffer buf
+              ;; Should be empty
+              (expect (buffer-string) :to-equal "")))
+        (kill-buffer buf)))))
+
 ;;; vui-test.el ends here

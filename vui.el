@@ -2512,55 +2512,76 @@ Handles :truncate and overflow:
                      (format "%s" (or value "Select...")))))
 
    ;; Horizontal stack
+   ;; Children that render to nothing (e.g., components returning nil)
+   ;; are skipped and don't affect spacing.
    ((vui-vnode-hstack-p vnode)
     (let ((spacing (or (vui-vnode-hstack-spacing vnode) 1))
           (indent (or (vui-vnode-hstack-indent vnode) 0))
           (children (vui-vnode-hstack-children vnode))
           (space-str nil)
-          (first t))
+          (prev-rendered-p nil))
       (setq space-str (make-string spacing ?\s))
       (dolist (child children)
-        (unless first
-          (insert space-str))
-        ;; Propagate indent to child vstacks (for multi-line content)
-        ;; Set skip-first-indent because the first line continues horizontally
-        (if (and (vui-vnode-vstack-p child) (> indent 0))
-            (vui--render-vnode
-             (vui-vnode-vstack--create
-              :children (vui-vnode-vstack-children child)
-              :spacing (vui-vnode-vstack-spacing child)
-              :indent (+ indent (or (vui-vnode-vstack-indent child) 0))
-              :skip-first-indent t
-              :key (vui-vnode-vstack-key child)))
-          (vui--render-vnode child))
-        (setq first nil))))
+        (let ((sep-start (point))
+              (content-start nil))
+          ;; Only insert separator if previous child actually rendered something
+          (when prev-rendered-p
+            (insert space-str))
+          (setq content-start (point))
+          ;; Propagate indent to child vstacks (for multi-line content)
+          ;; Set skip-first-indent because the first line continues horizontally
+          (if (and (vui-vnode-vstack-p child) (> indent 0))
+              (vui--render-vnode
+               (vui-vnode-vstack--create
+                :children (vui-vnode-vstack-children child)
+                :spacing (vui-vnode-vstack-spacing child)
+                :indent (+ indent (or (vui-vnode-vstack-indent child) 0))
+                :skip-first-indent t
+                :key (vui-vnode-vstack-key child)))
+            (vui--render-vnode child))
+          ;; Check if child actually rendered anything
+          (if (> (point) content-start)
+              (setq prev-rendered-p t)
+            ;; Child rendered nothing - remove the separator we added
+            (delete-region sep-start (point)))))))
 
    ;; Vertical stack
    ;; Joins children with \n. newline children render as empty string,
    ;; effectively adding an extra \n (blank line) via the join.
+   ;; Children that render to nothing (e.g., components returning nil)
+   ;; are skipped and don't affect spacing.
    ((vui-vnode-vstack-p vnode)
     (let ((spacing (or (vui-vnode-vstack-spacing vnode) 0))
           (indent (or (vui-vnode-vstack-indent vnode) 0))
           (skip-first-indent (vui-vnode-vstack-skip-first-indent vnode))
           (children (vui-vnode-vstack-children vnode))
           (indent-str nil)
-          (first t))
+          (prev-rendered-p nil))
       (setq indent-str (make-string indent ?\s))
       (dolist (child children)
-        ;; Add separator newline (plus spacing) before each child except first
-        (unless first
-          (insert "\n")
-          (dotimes (_ spacing) (insert "\n")))
-        ;; newline children render as empty string (marker for blank line)
-        ;; other children get indent prefix and rendered content
-        (unless (vui-vnode-newline-p child)
-          ;; Skip indent for first child if skip-first-indent is set
-          ;; (used when vstack is inside hstack - first line continues horizontally)
-          (let ((skip-this-indent (and first skip-first-indent)))
+        ;; newline children are intentional blank lines - always "render"
+        (if (vui-vnode-newline-p child)
+            (progn
+              ;; Add separator if previous child rendered
+              (when prev-rendered-p
+                (insert "\n")
+                (dotimes (_ spacing) (insert "\n")))
+              ;; newline itself doesn't insert anything, but counts as rendered
+              (setq prev-rendered-p t))
+          ;; Non-newline children: track if they produce output
+          (let* ((skip-this-indent (and (not prev-rendered-p) skip-first-indent))
+                 (sep-start (point))
+                 (content-start nil))
+            ;; Add separator newline (plus spacing) before child if prev rendered
+            (when prev-rendered-p
+              (insert "\n")
+              (dotimes (_ spacing) (insert "\n")))
             (cond
              ;; Propagate indent to nested vstacks (they handle their own indentation)
              ;; Also propagate skip-first-indent if this is the first child we're skipping
              ((and (vui-vnode-vstack-p child) (> indent 0))
+              ;; Nested vstacks handle their own indent, measure from here
+              (setq content-start (point))
               (vui--render-vnode
                (vui-vnode-vstack--create
                 :children (vui-vnode-vstack-children child)
@@ -2572,6 +2593,8 @@ Handles :truncate and overflow:
              ((and (vui-vnode-hstack-p child) (> indent 0))
               (unless skip-this-indent
                 (insert indent-str))
+              ;; Measure after indent insertion
+              (setq content-start (point))
               (vui--render-vnode
                (vui-vnode-hstack--create
                 :children (vui-vnode-hstack-children child)
@@ -2582,8 +2605,14 @@ Handles :truncate and overflow:
              (t
               (when (and (> indent 0) (not skip-this-indent))
                 (insert indent-str))
-              (vui--render-vnode child)))))
-        (setq first nil))))
+              ;; Measure after indent insertion
+              (setq content-start (point))
+              (vui--render-vnode child)))
+            ;; Check if child actually rendered anything
+            (if (> (point) content-start)
+                (setq prev-rendered-p t)
+              ;; Child rendered nothing - remove separator and any indent we added
+              (delete-region sep-start (point))))))))
 
    ;; Fixed-width box
    ((vui-vnode-box-p vnode)

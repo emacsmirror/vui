@@ -228,6 +228,24 @@ If you return =nil=, nothing is rendered:
     (vui-text message)))  ; Returns nil when show-p is false
 #+end_src
 
+Components that render to =nil= are completely invisible in layout - they don't affect =vstack= or =hstack= spacing:
+
+#+begin_src elisp
+(defcomponent sidebar-widget (is-journal)
+  :render
+  (when is-journal
+    (vui-text "Journal navigation")))
+
+(defcomponent sidebar ()
+  :render
+  (vui-vstack :spacing 1
+    (vui-component 'sidebar-widget :is-journal nil)  ; Renders nothing, no extra blank line
+    (vui-text "Stats")
+    (vui-component 'sidebar-widget :is-journal nil)  ; Renders nothing, no extra blank line
+    (vui-text "Outline")))
+;; Result: "Stats\n\nOutline" (single blank line from spacing)
+#+end_src
+
 * Creating Component Instances
 
 Use =vui-component= to create a component vnode:

@@ -22,6 +22,7 @@ The format is based on [[https://keepachangelog.com/en/1.1.0/][Keep a Changelog]
 
 - Propagate indent through =hstack= to nested =vstack=. When a =vstack= was nested inside an =hstack=, the indent context from parent =vstacks= was lost, causing subsequent lines to render without proper indentation.
 - Accumulate indent correctly in nested =vstacks=.
+- Components that render to =nil= no longer affect =vstack= / =hstack= spacing. Previously, a component returning =nil= (e.g., =(when condition (vui-text "..."))=) would still cause separator newlines/spaces to be inserted, resulting in extra blank lines or spaces in the output.
 
 * v1.0.0-rc.1 - 2025-12-03
 
