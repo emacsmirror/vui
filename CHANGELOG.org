@@ -7,6 +7,8 @@ The format is based on [[https://keepachangelog.com/en/1.1.0/][Keep a Changelog]
 
 * Unreleased
 
+* v1.0.0-rc.2 - 2025-12-12
+
 ** Changed
 
 - =vui-list= now returns =vstack= (for vertical, default) or =hstack= (for horizontal) instead of a fragment. This ensures proper indent propagation when nested inside layout containers.
