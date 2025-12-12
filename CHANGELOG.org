@@ -7,6 +7,10 @@ The format is based on [[https://keepachangelog.com/en/1.1.0/][Keep a Changelog]
 
 * Unreleased
 
+** Fixed
+
+- =vui-table= now respects =:indent= from parent =vui-vstack=. Previously, only the first line of a table was indented; now all lines are properly indented.
+
 * v1.0.0-rc.2 - 2025-12-12
 
 ** Changed

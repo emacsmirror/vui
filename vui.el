@@ -2601,6 +2601,17 @@ Handles :truncate and overflow:
                 :spacing (vui-vnode-hstack-spacing child)
                 :indent (+ indent (or (vui-vnode-hstack-indent child) 0))
                 :key (vui-vnode-hstack-key child))))
+             ;; Tables: render with indent, then add indent after internal newlines
+             ((and (vui-vnode-table-p child) (> indent 0))
+              (unless skip-this-indent
+                (insert indent-str))
+              (setq content-start (point))
+              (vui--render-vnode child)
+              ;; Add indent after each internal newline
+              (save-excursion
+                (goto-char content-start)
+                (while (search-forward "\n" nil t)
+                  (insert indent-str))))
              ;; Other children: insert indent (if needed) and render
              (t
               (when (and (> indent 0) (not skip-this-indent))

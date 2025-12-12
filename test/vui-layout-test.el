@@ -552,7 +552,26 @@ Buttons are widget.el push-buttons, so we use widget-apply."
       ;; Cell content must be 10 chars, button truncated
       ;; max-width=10: [] takes 2, ... takes 3, so 5 chars for label = "very "
       ;; | [very ...] | - button inside 10-char cell
-      (expect (buffer-string) :to-match "| \\[very \\.\\.\\.\\] |"))))
+      (expect (buffer-string) :to-match "| \\[very \\.\\.\\.\\] |")))
+
+  (it "respects indent from parent vstack"
+    (with-temp-buffer
+      (vui-render (vui-vstack :indent 2
+                    (vui-table
+                     :columns '((:header "Mo" :width 4 :grow t)
+                                (:header "Tu" :width 4 :grow t)
+                                (:header "We" :width 4 :grow t))
+                     :rows '(("1" "2" "3")
+                             ("8" "9" "10"))
+                     :border :ascii)))
+      ;; Each line of the table should be indented by 2 spaces
+      (expect (buffer-string) :to-equal
+              (concat "  +------+------+------+\n"
+                      "  | Mo   | Tu   | We   |\n"
+                      "  +------+------+------+\n"
+                      "  | 1    | 2    | 3    |\n"
+                      "  | 8    | 9    | 10   |\n"
+                      "  +------+------+------+")))))
 
 (describe "table with component cells"
   ;; Disable idle rendering for tests
