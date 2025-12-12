@@ -1,0 +1,2474 @@
+;;; vui-component-test.el --- Component tests for vui.el -*- lexical-binding: t; -*-
+
+;;; Commentary:
+
+;; Tests for vui.el component system: defcomponent, lifecycle, hooks, context, etc.
+
+;;; Code:
+
+(require 'buttercup)
+(require 'vui)
+
+;; Helper to click buttons (widget.el push-buttons)
+(defun vui-test--click-button-at (pos)
+  "Invoke the button widget at POS.
+Buttons are widget.el push-buttons, so we use widget-apply."
+  (let ((widget (widget-at pos)))
+    (when widget
+      (widget-apply widget :action))))
+
+(describe "defcomponent"
+  (it "defines a component and registers it"
+    (defcomponent test-simple ()
+      :render (vui-text "simple"))
+    (expect (vui--get-component 'test-simple) :to-be-truthy))
+
+  (it "defines component with props"
+    (defcomponent test-greeting (name)
+      :render (vui-text (format "Hello, %s!" name)))
+    (let ((def (vui--get-component 'test-greeting)))
+      (expect (vui-component-def-props-spec def) :to-equal '(name))))
+
+  (it "defines component with state"
+    (defcomponent test-counter ()
+      :state ((count 0))
+      :render (vui-text (number-to-string count)))
+    (let ((def (vui--get-component 'test-counter)))
+      (expect (vui-component-def-initial-state-fn def) :to-be-truthy)))
+
+  (it "allows state initializers to access props"
+    (defcomponent test-prop-to-state (initial-value)
+      :state ((value initial-value))  ; state initialized from prop
+      :render (vui-text (format "Value: %s" value)))
+    (with-temp-buffer
+      (vui-render (vui-component 'test-prop-to-state :initial-value "hello"))
+      (expect (buffer-string) :to-equal "Value: hello")))
+
+  (it "supports optional docstring"
+    (defcomponent test-with-docstring (name)
+      "A component with documentation."
+      :render (vui-text name))
+    (let ((def (vui--get-component 'test-with-docstring)))
+      (expect (vui-component-def-docstring def)
+              :to-equal "A component with documentation.")))
+
+  (it "works without docstring"
+    (defcomponent test-no-docstring (name)
+      :render (vui-text name))
+    (let ((def (vui--get-component 'test-no-docstring)))
+      (expect (vui-component-def-docstring def) :to-be nil))))
+
+(describe "vui-component"
+  (it "creates a component vnode"
+    (let ((vnode (vui-component 'test-simple)))
+      (expect (vui-vnode-component-p vnode) :to-be-truthy)
+      (expect (vui-vnode-component-type vnode) :to-equal 'test-simple)))
+
+  (it "accepts props"
+    (let ((vnode (vui-component 'test-greeting :name "World")))
+      (expect (plist-get (vui-vnode-component-props vnode) :name)
+              :to-equal "World")))
+
+  (it "accepts children"
+    (let ((vnode (vui-component 'some-comp :children (list (vui-text "child")))))
+      (expect (vui-vnode-component-children vnode) :to-be-truthy))))
+
+(describe "component rendering"
+  (it "renders a simple component"
+    (defcomponent render-test ()
+      :render (vui-text "rendered!"))
+    (with-temp-buffer
+      (vui-render (vui-component 'render-test))
+      (expect (buffer-string) :to-equal "rendered!")))
+
+  (it "renders component with props"
+    (defcomponent greeting-test (name)
+      :render (vui-text (format "Hi, %s!" name)))
+    (with-temp-buffer
+      (vui-render (vui-component 'greeting-test :name "Alice"))
+      (expect (buffer-string) :to-equal "Hi, Alice!")))
+
+  (it "renders nested components"
+    (defcomponent inner-comp ()
+      :render (vui-text "[inner]"))
+    (defcomponent outer-comp ()
+      :render (vui-fragment
+               (vui-text "outer:")
+               (vui-component 'inner-comp)))
+    (with-temp-buffer
+      (vui-render (vui-component 'outer-comp))
+      (expect (buffer-string) :to-equal "outer:[inner]")))
+
+  (it "passes children to component"
+    (defcomponent wrapper-comp ()
+      :render (vui-fragment
+               (vui-text "[")
+               (vui-vnode-fragment--create :children children)
+               (vui-text "]")))
+    (with-temp-buffer
+      (vui-render (vui-component 'wrapper-comp
+                                 :children (list (vui-text "content"))))
+      (expect (buffer-string) :to-equal "[content]"))))
+
+(describe "lifecycle hooks"
+  (it "calls on-mount after first render"
+    (let ((mounted nil))
+      (defcomponent mount-test ()
+        :on-mount (setq mounted t)
+        :render (vui-text "hello"))
+      (let ((instance (vui-mount (vui-component 'mount-test) "*test-mount*")))
+        (unwind-protect
+            (progn
+              (expect mounted :to-be-truthy)
+              (expect (buffer-string) :to-equal "hello"))
+          (kill-buffer "*test-mount*")))))
+
+  (it "does not call on-mount on re-render"
+    (let ((mount-count 0))
+      (defcomponent mount-once ()
+        :state ((count 0))
+        :on-mount (setq mount-count (1+ mount-count))
+        :render (vui-text (number-to-string count)))
+      (let ((instance (vui-mount (vui-component 'mount-once) "*test-mount2*")))
+        (unwind-protect
+            (progn
+              (expect mount-count :to-equal 1)
+              ;; Trigger re-render
+              (vui--rerender-instance instance)
+              (expect mount-count :to-equal 1))
+          (kill-buffer "*test-mount2*")))))
+
+  (it "triggers re-render when vui-set-state called in on-mount"
+    (let ((render-count 0))
+      (defcomponent mount-set-state ()
+        :state ((value "initial"))
+        :on-mount
+        (vui-set-state :value "from-mount")
+        :render
+        (progn
+          (setq render-count (1+ render-count))
+          (vui-text value)))
+      (let ((instance (vui-mount (vui-component 'mount-set-state) "*test-mount-state*")))
+        (unwind-protect
+            (progn
+              ;; Flush the deferred render scheduled by vui-set-state
+              (vui-flush-sync)
+              ;; Should have rendered twice: initial + after on-mount set state
+              (expect render-count :to-equal 2)
+              ;; Final state should be from on-mount
+              (expect (buffer-string) :to-equal "from-mount"))
+          (kill-buffer "*test-mount-state*")))))
+
+  (it "triggers re-render when vui-batch used in on-mount"
+    (let ((render-count 0))
+      (defcomponent mount-batch-state ()
+        :state ((a "initial-a")
+                (b "initial-b"))
+        :on-mount
+        (vui-batch
+         (vui-set-state :a "from-mount-a")
+         (vui-set-state :b "from-mount-b"))
+        :render
+        (progn
+          (setq render-count (1+ render-count))
+          (vui-text (concat a " " b))))
+      (let ((instance (vui-mount (vui-component 'mount-batch-state) "*test-mount-batch*")))
+        (unwind-protect
+            (progn
+              ;; Flush the deferred render scheduled by vui-batch
+              (vui-flush-sync)
+              ;; Should have rendered twice: initial + after on-mount batch
+              (expect render-count :to-equal 2)
+              ;; Final state should be from on-mount
+              (expect (buffer-string) :to-equal "from-mount-a from-mount-b"))
+          (kill-buffer "*test-mount-batch*")))))
+
+  (it "deferred timer fires automatically for on-mount state changes"
+    (let ((render-count 0))
+      (defcomponent mount-timer-test ()
+        :state ((value "initial"))
+        :on-mount
+        (vui-set-state :value "from-mount")
+        :render
+        (progn
+          (setq render-count (1+ render-count))
+          (vui-text value)))
+      (let ((instance (vui-mount (vui-component 'mount-timer-test) "*test-timer*")))
+        (unwind-protect
+            (progn
+              ;; First render should have happened
+              (expect render-count :to-equal 1)
+              (expect (buffer-string) :to-equal "initial")
+              ;; Let deferred timer fire (vui-render-delay is 0.01s)
+              (sleep-for 0.05)
+              ;; Second render should have happened
+              (expect render-count :to-equal 2)
+              (expect (buffer-string) :to-equal "from-mount"))
+          (kill-buffer "*test-timer*")))))
+
+  (it "vui-batch works inside with-temp-buffer in on-mount"
+    (let ((render-count 0))
+      (defcomponent mount-temp-buffer-test ()
+        :state ((data nil))
+        :on-mount
+        ;; Simulate loading data from a file using with-temp-buffer
+        (with-temp-buffer
+          (insert "loaded-data")
+          (let ((loaded (buffer-string)))
+            (vui-batch
+             (vui-set-state :data loaded))))
+        :render
+        (progn
+          (setq render-count (1+ render-count))
+          (vui-text (or data "none"))))
+      (let ((instance (vui-mount (vui-component 'mount-temp-buffer-test) "*test-temp-buf*")))
+        (unwind-protect
+            (progn
+              ;; Let deferred timer fire
+              (sleep-for 0.05)
+              ;; Should have rendered twice and show loaded data
+              (expect render-count :to-equal 2)
+              (expect (buffer-string) :to-equal "loaded-data"))
+          (kill-buffer "*test-temp-buf*")))))
+
+  (it "calls on-unmount when component is removed"
+    (let ((unmounted nil)
+          (show-child t))
+      (defcomponent unmount-child ()
+        :on-unmount (setq unmounted t)
+        :render (vui-text "child"))
+      (defcomponent unmount-parent ()
+        :render (if show-child
+                    (vui-component 'unmount-child)
+                  (vui-text "no child")))
+      (let ((instance (vui-mount (vui-component 'unmount-parent) "*test-unmount*")))
+        (unwind-protect
+            (progn
+              (expect unmounted :to-be nil)
+              (expect (buffer-string) :to-equal "child")
+              ;; Remove child by setting show-child to nil and re-render
+              (setq show-child nil)
+              (vui--rerender-instance instance)
+              (expect unmounted :to-be-truthy)
+              (expect (buffer-string) :to-equal "no child"))
+          (kill-buffer "*test-unmount*")))))
+
+  (it "calls on-unmount for nested children depth-first"
+    (let ((unmount-order nil))
+      (defcomponent nested-inner ()
+        :on-unmount (push 'inner unmount-order)
+        :render (vui-text "inner"))
+      (defcomponent nested-outer ()
+        :on-unmount (push 'outer unmount-order)
+        :render (vui-fragment
+                 (vui-text "outer:")
+                 (vui-component 'nested-inner)))
+      (defcomponent nested-root ()
+        :state ((show t))
+        :render (if show
+                    (vui-component 'nested-outer)
+                  (vui-text "empty")))
+      (let ((instance (vui-mount (vui-component 'nested-root) "*test-nested*")))
+        (unwind-protect
+            (progn
+              ;; Remove the nested components
+              (setf (vui-instance-state instance)
+                    (plist-put (vui-instance-state instance) :show nil))
+              (vui--rerender-instance instance)
+              ;; Inner should unmount before outer (depth-first)
+              (expect unmount-order :to-equal '(outer inner)))
+          (kill-buffer "*test-nested*")))))
+
+  (it "provides props and state to lifecycle hooks"
+    (let ((mount-props nil)
+          (mount-state nil))
+      (defcomponent lifecycle-args (name)
+        :state ((count 42))
+        :on-mount (setq mount-props name
+                        mount-state count)
+        :render (vui-text name))
+      (let ((instance (vui-mount (vui-component 'lifecycle-args :name "test")
+                                 "*test-args*")))
+        (unwind-protect
+            (progn
+              (expect mount-props :to-equal "test")
+              (expect mount-state :to-equal 42))
+          (kill-buffer "*test-args*")))))
+
+  (it "calls on-update after re-render"
+    (let ((update-count 0)
+          (captured-prev-state nil))
+      (defcomponent test-update ()
+        :state ((count 0))
+        :on-update (progn
+                     (setq update-count (1+ update-count))
+                     (setq captured-prev-state (plist-get prev-state :count)))
+        :render (vui-text (number-to-string count)))
+      (let ((instance (vui-mount (vui-component 'test-update) "*test-update*")))
+        (unwind-protect
+            (progn
+              ;; on-update not called on first render
+              (expect update-count :to-equal 0)
+              ;; Trigger re-render
+              (setf (vui-instance-state instance)
+                    (plist-put (vui-instance-state instance) :count 5))
+              (vui--rerender-instance instance)
+              ;; on-update should have been called
+              (expect update-count :to-equal 1)
+              ;; prev-state should have the old value
+              (expect captured-prev-state :to-equal 0)
+              ;; Another re-render
+              (setf (vui-instance-state instance)
+                    (plist-put (vui-instance-state instance) :count 10))
+              (vui--rerender-instance instance)
+              (expect update-count :to-equal 2)
+              (expect captured-prev-state :to-equal 5))
+          (kill-buffer "*test-update*")))))
+
+  (it "provides prev-props to on-update"
+    (let ((captured-prev-label nil))
+      (defcomponent test-update-props (label)
+        :on-update (setq captured-prev-label (plist-get prev-props :label))
+        :render (vui-text label))
+      (let ((instance (vui-mount (vui-component 'test-update-props :label "first")
+                                 "*test-update-props*")))
+        (unwind-protect
+            (progn
+              ;; Update props and re-render
+              (setf (vui-instance-props instance)
+                    (plist-put (vui-instance-props instance) :label "second"))
+              (vui--rerender-instance instance)
+              ;; on-update should have captured the previous label
+              (expect captured-prev-label :to-equal "first"))
+          (kill-buffer "*test-update-props*"))))))
+
+(describe "reconciliation"
+  (it "preserves child component state across parent re-render"
+    ;; Define a child component with state
+    (defcomponent stateful-child ()
+      :state ((value 42))
+      :render (vui-text (number-to-string value)))
+    ;; Define parent that renders the child
+    (defcomponent parent-comp ()
+      :state ((label "test"))
+      :render (vui-fragment
+               (vui-text label)
+               (vui-text ":")
+               (vui-component 'stateful-child)))
+    ;; Mount and verify initial render
+    (let* ((instance (vui-mount (vui-component 'parent-comp) "*test-recon*")))
+      (unwind-protect
+          (progn
+            (expect (buffer-string) :to-equal "test:42")
+            ;; Get the child instance and change its state
+            (let ((child (car (vui-instance-children instance))))
+              (expect child :to-be-truthy)
+              ;; Manually set child state
+              (setf (vui-instance-state child)
+                    (plist-put (vui-instance-state child) :value 100)))
+            ;; Re-render parent (simulating state change)
+            (vui--rerender-instance instance)
+            ;; Child state should be preserved
+            (expect (buffer-string) :to-equal "test:100"))
+        (kill-buffer "*test-recon*"))))
+
+  (it "reuses child by index when no key provided"
+    (defcomponent indexed-child (label)
+      :state ((count 0))
+      :render (vui-text (format "%s:%d" label count)))
+    (defcomponent indexed-parent ()
+      :render (vui-fragment
+               (vui-component 'indexed-child :label "A")
+               (vui-component 'indexed-child :label "B")))
+    (let ((instance (vui-mount (vui-component 'indexed-parent) "*test-idx*")))
+      (unwind-protect
+          (progn
+            (expect (buffer-string) :to-equal "A:0B:0")
+            ;; Set state on first child
+            (let ((first-child (car (vui-instance-children instance))))
+              (setf (vui-instance-state first-child)
+                    (plist-put (vui-instance-state first-child) :count 5)))
+            (vui--rerender-instance instance)
+            ;; First child should preserve state, second should stay 0
+            (expect (buffer-string) :to-equal "A:5B:0"))
+        (kill-buffer "*test-idx*"))))
+
+  (it "preserves state when items reordered by key"
+    ;; Define a child component with internal state
+    (defcomponent keyed-item (id)
+      :state ((clicks 0))
+      :render (vui-button (format "%s:%d" id clicks)
+                :on-click (lambda () (vui-set-state :clicks (1+ clicks)))))
+    ;; Parent component that renders a list with keys
+    (let ((items '("A" "B" "C")))
+      (defcomponent keyed-list ()
+        :render (apply #'vui-vstack
+                  (mapcar (lambda (id)
+                            (vui-component 'keyed-item :key id :id id))
+                          items)))
+      (let ((instance (vui-mount (vui-component 'keyed-list) "*test-keys*")))
+        (unwind-protect
+            (with-current-buffer "*test-keys*"
+              ;; Click first button (A) at point-min to increment its state
+              (vui-test--click-button-at (point-min))
+              ;; Force immediate render (vui-render-delay causes async render)
+              (vui-flush-sync)
+              ;; Verify A now shows clicks=1
+              (expect (buffer-string) :to-match "A:1")
+              ;; Reorder: move A to last position
+              (setq items '("B" "C" "A"))
+              (vui--rerender-instance instance)
+              ;; A should still have clicks=1 despite position change
+              (expect (buffer-string) :to-match "A:1")
+              ;; B and C should still have clicks=0
+              (expect (buffer-string) :to-match "B:0")
+              (expect (buffer-string) :to-match "C:0"))
+          (kill-buffer "*test-keys*"))))))
+
+(describe "cursor preservation"
+  (it "maintains cursor position on same widget after re-render"
+    (defcomponent cursor-test ()
+      :state ((label "initial"))
+      :render
+      (vui-vstack
+        (vui-field :key "field1" :value "first")
+        (vui-field :key "field2" :value "second")
+        (vui-button "Update" :on-click (lambda ()
+                                          (vui-set-state :label "changed")))))
+    (let ((instance (vui-mount (vui-component 'cursor-test) "*test-cursor*")))
+      (unwind-protect
+          (with-current-buffer "*test-cursor*"
+            ;; Move to second field widget
+            (goto-char (point-min))
+            (widget-forward 1)  ; first field
+            (widget-forward 1)  ; second field
+            (let ((pos-before (point)))
+              ;; Verify we're at a widget
+              (expect (widget-at (point)) :to-be-truthy)
+              ;; Trigger re-render via button click
+              (save-excursion
+                (goto-char (point-min))
+                (search-forward "[Update]")
+                (backward-char 8)  ; position at start of "[Update]"
+                (vui-test--click-button-at (point)))
+              ;; Cursor should still be at a widget (field)
+              (expect (widget-at (point)) :to-be-truthy)))
+        (kill-buffer "*test-cursor*"))))
+
+  (it "preserves cursor when content changes around widget"
+    (defcomponent cursor-content-test ()
+      :state ((prefix "short"))
+      :render
+      (vui-vstack
+        (vui-text prefix)
+        (vui-field :key "input" :value "test")
+        (vui-button "Toggle" :on-click
+          (lambda ()
+            (vui-set-state :prefix
+              (if (string= prefix "short")
+                  "this is a much longer prefix"
+                "short"))))))
+    (let ((instance (vui-mount (vui-component 'cursor-content-test) "*test-cursor2*")))
+      (unwind-protect
+          (with-current-buffer "*test-cursor2*"
+            ;; Navigate to the field
+            (goto-char (point-min))
+            (widget-forward 1)  ; to field
+            (let ((widget-before (widget-at (point))))
+              (expect widget-before :to-be-truthy)
+              ;; Change the prefix (content before widget changes length)
+              (save-excursion
+                (goto-char (point-min))
+                (search-forward "[Toggle]")
+                (backward-char 8)  ; position at start of "[Toggle]"
+                (vui-test--click-button-at (point)))
+              ;; Cursor should still be on a field widget
+              (let ((widget-after (widget-at (point))))
+                (expect widget-after :to-be-truthy)
+                (expect (widget-type widget-after) :to-equal 'editable-field))))
+        (kill-buffer "*test-cursor2*")))))
+
+(describe "use-effect"
+  (it "runs effect after first render"
+    (let ((effect-ran nil))
+      (defcomponent effect-test ()
+        :render (progn
+                  (use-effect ()
+                    (setq effect-ran t))
+                  (vui-text "test")))
+      (let ((instance (vui-mount (vui-component 'effect-test) "*test-effect1*")))
+        (unwind-protect
+            (expect effect-ran :to-be-truthy)
+          (kill-buffer "*test-effect1*")))))
+
+  (it "runs effect when deps change"
+    (let ((effect-count 0)
+          (show-alt nil))
+      (defcomponent effect-deps ()
+        :state ((value 1))
+        :render (progn
+                  (use-effect (value)
+                    (setq effect-count (1+ effect-count)))
+                  (vui-text (number-to-string value))))
+      (let ((instance (vui-mount (vui-component 'effect-deps) "*test-effect2*")))
+        (unwind-protect
+            (progn
+              ;; Effect should run once on mount
+              (expect effect-count :to-equal 1)
+              ;; Change state and re-render
+              (setf (vui-instance-state instance)
+                    (plist-put (vui-instance-state instance) :value 2))
+              (vui--rerender-instance instance)
+              ;; Effect should run again because dep changed
+              (expect effect-count :to-equal 2)
+              ;; Re-render without changing value
+              (vui--rerender-instance instance)
+              ;; Effect should NOT run (deps unchanged)
+              (expect effect-count :to-equal 2))
+          (kill-buffer "*test-effect2*")))))
+
+  (it "does not run effect when deps are unchanged"
+    (let ((effect-count 0))
+      (defcomponent effect-stable ()
+        :state ((count 0) (other 0))
+        :render (progn
+                  (use-effect (count)
+                    (setq effect-count (1+ effect-count)))
+                  (vui-text (format "%d-%d" count other))))
+      (let ((instance (vui-mount (vui-component 'effect-stable) "*test-effect3*")))
+        (unwind-protect
+            (progn
+              (expect effect-count :to-equal 1)
+              ;; Change 'other' but not 'count'
+              (setf (vui-instance-state instance)
+                    (plist-put (vui-instance-state instance) :other 5))
+              (vui--rerender-instance instance)
+              ;; Effect should NOT run (count unchanged)
+              (expect effect-count :to-equal 1))
+          (kill-buffer "*test-effect3*")))))
+
+  (it "runs cleanup before next effect"
+    (let ((cleanup-ran nil)
+          (effect-value nil))
+      (defcomponent effect-cleanup ()
+        :state ((value 1))
+        :render (progn
+                  (use-effect (value)
+                    (setq effect-value value)
+                    (lambda () (setq cleanup-ran value)))
+                  (vui-text (number-to-string value))))
+      (let ((instance (vui-mount (vui-component 'effect-cleanup) "*test-effect4*")))
+        (unwind-protect
+            (progn
+              (expect effect-value :to-equal 1)
+              (expect cleanup-ran :to-be nil)
+              ;; Change state
+              (setf (vui-instance-state instance)
+                    (plist-put (vui-instance-state instance) :value 2))
+              (vui--rerender-instance instance)
+              ;; Cleanup from previous effect should have run
+              (expect cleanup-ran :to-equal 1)
+              (expect effect-value :to-equal 2))
+          (kill-buffer "*test-effect4*")))))
+
+  (it "runs cleanup on unmount"
+    (let ((cleanup-ran nil)
+          (show-child t))
+      (defcomponent effect-unmount-child ()
+        :render (progn
+                  (use-effect ()
+                    (lambda () (setq cleanup-ran t)))
+                  (vui-text "child")))
+      (defcomponent effect-unmount-parent ()
+        :render (if show-child
+                    (vui-component 'effect-unmount-child)
+                  (vui-text "no child")))
+      (let ((instance (vui-mount (vui-component 'effect-unmount-parent) "*test-effect5*")))
+        (unwind-protect
+            (progn
+              (expect cleanup-ran :to-be nil)
+              ;; Remove child
+              (setq show-child nil)
+              (vui--rerender-instance instance)
+              ;; Cleanup should have run
+              (expect cleanup-ran :to-be-truthy))
+          (kill-buffer "*test-effect5*")))))
+
+  (it "allows vui-set-state inside effect body"
+    (defcomponent effect-set-state ()
+      :state ((count 0) (doubled nil))
+      :render (progn
+                (use-effect (count)
+                  ;; Should be able to call vui-set-state directly in effect
+                  (vui-set-state :doubled (* 2 count)))
+                (vui-text (format "count=%d doubled=%s" count doubled))))
+    (let ((instance (vui-mount (vui-component 'effect-set-state) "*test-effect-state*")))
+      (unwind-protect
+          (progn
+            ;; Effect should have set doubled to 0
+            (expect (plist-get (vui-instance-state instance) :doubled) :to-equal 0)
+            ;; Change count
+            (setf (vui-instance-state instance)
+                  (plist-put (vui-instance-state instance) :count 5))
+            (vui--rerender-instance instance)
+            ;; Effect should have set doubled to 10
+            (expect (plist-get (vui-instance-state instance) :doubled) :to-equal 10))
+        (kill-buffer "*test-effect-state*"))))
+
+  (it "fails to set state from timer callback with arguments (demonstrates need for vui-async-callback)"
+    ;; This test demonstrates the problem: when an async callback receives
+    ;; arguments, we can't use vui-with-async-context because it's evaluated
+    ;; when the callback runs (context already nil), not when created.
+    (let ((error-occurred nil)
+          (result-value nil))
+      (defcomponent async-callback-problem ()
+        :state ((data nil))
+        :render (progn
+                  (use-effect ()
+                    ;; Start async operation that will call back with data
+                    (run-with-timer
+                     0.01 nil
+                     (lambda ()
+                       ;; This is called OUTSIDE component context
+                       ;; We have result data: "async-result"
+                       ;; We need to pass it to vui-set-state
+                       ;; But vui-with-async-context is evaluated HERE
+                       ;; when vui--current-instance is nil!
+                       (condition-case err
+                           (let ((result "async-result"))
+                             (funcall (vui-with-async-context
+                                        (vui-set-state :data result))))
+                         (error (setq error-occurred (error-message-string err)))))))
+                  (vui-text (or data "loading"))))
+      (let ((instance (vui-mount (vui-component 'async-callback-problem) "*test-async-cb*")))
+        (unwind-protect
+            (progn
+              ;; Wait for timer to fire
+              (sleep-for 0.05)
+              ;; Error should have occurred because vui-with-async-context
+              ;; was evaluated outside component context
+              (expect error-occurred :to-match "outside of component context"))
+          (kill-buffer "*test-async-cb*")))))
+
+  (it "vui-with-async-context works when evaluated inside component"
+    ;; Positive test: vui-with-async-context works correctly when the macro
+    ;; is evaluated INSIDE component context (during render/effect)
+    (let ((timer-fired nil)
+          (state-updated nil))
+      (defcomponent async-context-positive ()
+        :state ((ticks 0))
+        :render
+        (progn
+          (use-effect ()
+            ;; Capture context NOW while inside component
+            (let ((update-fn (vui-with-async-context
+                               (setq timer-fired t)
+                               (vui-set-state :ticks #'1+))))
+              (run-with-timer 0.02 nil update-fn)
+              ;; Return cleanup
+              (lambda () nil)))
+          (setq state-updated ticks)
+          (vui-text (number-to-string ticks))))
+      (let ((instance (vui-mount (vui-component 'async-context-positive)
+                                 "*test-async-ctx*")))
+        (unwind-protect
+            (progn
+              ;; Initially 0
+              (expect (plist-get (vui-instance-state instance) :ticks) :to-equal 0)
+              ;; Wait for timer
+              (sleep-for 0.05)
+              ;; State should have been updated via async context
+              (expect timer-fired :to-be-truthy)
+              (expect (plist-get (vui-instance-state instance) :ticks) :to-equal 1))
+          (kill-buffer "*test-async-ctx*"))))))
+
+(describe "vui-async-callback"
+  (it "allows setting state from async callback with arguments"
+    (let ((result-value nil))
+      (defcomponent async-callback-test ()
+        :state ((data nil))
+        :render (progn
+                  (use-effect ()
+                    ;; Create callback while context exists, call later with args
+                    (let ((callback (vui-async-callback (result)
+                                      (vui-set-state :data result))))
+                      (run-with-timer 0.01 nil
+                        (lambda ()
+                          ;; Callback receives data and sets state
+                          (funcall callback "async-result")))))
+                  (setq result-value data)
+                  (vui-text (or data "loading"))))
+      (let ((instance (vui-mount (vui-component 'async-callback-test) "*test-async-cb2*")))
+        (unwind-protect
+            (progn
+              ;; Initially loading
+              (expect result-value :to-be nil)
+              ;; Wait for timer to fire
+              (sleep-for 0.05)
+              ;; State should have been updated
+              (expect (plist-get (vui-instance-state instance) :data) :to-equal "async-result"))
+          (kill-buffer "*test-async-cb2*"))))))
+
+(describe "use-ref"
+  (it "creates a ref with initial value"
+    (let ((ref-value nil))
+      (defcomponent ref-test ()
+        :render (let ((my-ref (use-ref 42)))
+                  (setq ref-value (car my-ref))
+                  (vui-text "test")))
+      (let ((instance (vui-mount (vui-component 'ref-test) "*test-ref1*")))
+        (unwind-protect
+            (expect ref-value :to-equal 42)
+          (kill-buffer "*test-ref1*")))))
+
+  (it "preserves ref value across re-renders"
+    (let ((ref-values nil))
+      (defcomponent ref-persist ()
+        :state ((count 0))
+        :render (let ((my-ref (use-ref 0)))
+                  ;; On first render, set ref to 100
+                  (when (= (car my-ref) 0)
+                    (setcar my-ref 100))
+                  (push (car my-ref) ref-values)
+                  (vui-text (number-to-string count))))
+      (let ((instance (vui-mount (vui-component 'ref-persist) "*test-ref2*")))
+        (unwind-protect
+            (progn
+              ;; First render - ref should be 100 (we set it)
+              (expect (car ref-values) :to-equal 100)
+              ;; Re-render
+              (setf (vui-instance-state instance)
+                    (plist-put (vui-instance-state instance) :count 1))
+              (vui--rerender-instance instance)
+              ;; Ref should still be 100 (preserved)
+              (expect (car ref-values) :to-equal 100)
+              (expect (length ref-values) :to-equal 2))
+          (kill-buffer "*test-ref2*")))))
+
+  (it "does not trigger re-render when modified"
+    (let ((render-count 0))
+      (defcomponent ref-no-rerender ()
+        :render (let ((my-ref (use-ref 0)))
+                  (setq render-count (1+ render-count))
+                  ;; Modify ref - should NOT cause re-render
+                  (setcar my-ref (1+ (car my-ref)))
+                  (vui-text "test")))
+      (let ((instance (vui-mount (vui-component 'ref-no-rerender) "*test-ref3*")))
+        (unwind-protect
+            (progn
+              ;; Only one render should have occurred
+              (expect render-count :to-equal 1))
+          (kill-buffer "*test-ref3*")))))
+
+  (it "works with use-effect for storing timers"
+    (let ((cleanup-called nil)
+          (timer-value nil))
+      (defcomponent ref-with-effect ()
+        :render (let ((timer-ref (use-ref nil)))
+                  (use-effect ()
+                    ;; Store a value (simulating timer)
+                    (setcar timer-ref 'my-timer)
+                    (lambda ()
+                      (setq cleanup-called t)
+                      (setq timer-value (car timer-ref))))
+                  (vui-text "test")))
+      (let ((instance (vui-mount (vui-component 'ref-with-effect) "*test-ref4*")))
+        (unwind-protect
+            (progn
+              ;; Initially, cleanup not called
+              (expect cleanup-called :to-be nil)
+              ;; Force unmount by killing buffer (via vui--call-unmount-recursive)
+              (vui--call-unmount-recursive instance)
+              ;; Cleanup should have run and accessed the ref
+              (expect cleanup-called :to-be-truthy)
+              (expect timer-value :to-equal 'my-timer))
+          (when (get-buffer "*test-ref4*")
+            (kill-buffer "*test-ref4*")))))))
+
+(describe "context"
+  (it "defines context with defcontext"
+    (defcontext test-ctx 'default-value "A test context.")
+    (expect (boundp 'test-ctx-context) :to-be-truthy)
+    (expect (fboundp 'test-ctx-provider) :to-be-truthy)
+    (expect (fboundp 'use-test-ctx) :to-be-truthy)
+    (expect (vui-context-default-value test-ctx-context) :to-equal 'default-value))
+
+  (it "returns default value when no provider"
+    (defcontext theme 'light)
+    (let ((captured-theme nil))
+      (defcomponent theme-consumer ()
+        :render (progn
+                  (setq captured-theme (use-theme))
+                  (vui-text "test")))
+      (let ((instance (vui-mount (vui-component 'theme-consumer) "*test-ctx1*")))
+        (unwind-protect
+            (expect captured-theme :to-equal 'light)
+          (kill-buffer "*test-ctx1*")))))
+
+  (it "provides value to children"
+    (defcontext theme 'light)
+    (let ((captured-theme nil))
+      (defcomponent themed-button ()
+        :render (progn
+                  (setq captured-theme (use-theme))
+                  (vui-text (format "theme: %s" captured-theme))))
+      (defcomponent app ()
+        :render (theme-provider 'dark
+                                (vui-component 'themed-button)))
+      (let ((instance (vui-mount (vui-component 'app) "*test-ctx2*")))
+        (unwind-protect
+            (progn
+              (expect captured-theme :to-equal 'dark)
+              (expect (buffer-string) :to-equal "theme: dark"))
+          (kill-buffer "*test-ctx2*")))))
+
+  (it "allows nested providers with different values"
+    (defcontext indent-level 0)
+    (let ((captured-levels nil))
+      (defcomponent level-display ()
+        :render (progn
+                  (push (use-indent-level) captured-levels)
+                  (vui-text (number-to-string (use-indent-level)))))
+      (defcomponent nested-providers ()
+        :render (vui-fragment
+                 (indent-level-provider 1
+                                        (vui-component 'level-display)
+                                        (indent-level-provider 2
+                                                               (vui-component 'level-display)))))
+      (let ((instance (vui-mount (vui-component 'nested-providers) "*test-ctx3*")))
+        (unwind-protect
+            (progn
+              ;; Both levels should have been captured (in reverse order)
+              (expect (length captured-levels) :to-equal 2)
+              (expect (nth 0 captured-levels) :to-equal 2)  ; inner
+              (expect (nth 1 captured-levels) :to-equal 1)) ; outer
+          (kill-buffer "*test-ctx3*")))))
+
+  (it "supports multiple contexts"
+    (defcontext user-name "anonymous")
+    (defcontext user-role 'guest)
+    (let ((captured-name nil)
+          (captured-role nil))
+      (defcomponent multi-ctx-consumer ()
+        :render (progn
+                  (setq captured-name (use-user-name))
+                  (setq captured-role (use-user-role))
+                  (vui-text "test")))
+      (defcomponent multi-ctx-provider ()
+        :render (user-name-provider "alice"
+                                    (user-role-provider 'admin
+                                                        (vui-component 'multi-ctx-consumer))))
+      (let ((instance (vui-mount (vui-component 'multi-ctx-provider) "*test-ctx4*")))
+        (unwind-protect
+            (progn
+              (expect captured-name :to-equal "alice")
+              (expect captured-role :to-equal 'admin))
+          (kill-buffer "*test-ctx4*"))))))
+
+(describe "use-callback"
+  (it "returns same function reference when deps unchanged"
+    (let ((captured-fns nil))
+      (defcomponent callback-stable ()
+        :state ((count 0))
+        :render (let ((cb (use-callback ()
+                            (message "clicked"))))
+                  (push cb captured-fns)
+                  (vui-text "test")))
+      (let ((instance (vui-mount (vui-component 'callback-stable) "*test-cb1*")))
+        (unwind-protect
+            (progn
+              ;; First render
+              (expect (length captured-fns) :to-equal 1)
+              ;; Re-render
+              (vui--rerender-instance instance)
+              ;; Same function should be returned (eq)
+              (expect (length captured-fns) :to-equal 2)
+              (expect (eq (nth 0 captured-fns) (nth 1 captured-fns)) :to-be-truthy))
+          (kill-buffer "*test-cb1*")))))
+
+  (it "returns new function when deps change"
+    (let ((captured-fns nil))
+      (defcomponent callback-deps ()
+        :state ((id 1))
+        :render (let ((cb (use-callback (id)
+                            (delete-item id))))
+                  (push cb captured-fns)
+                  (vui-text (number-to-string id))))
+      (let ((instance (vui-mount (vui-component 'callback-deps) "*test-cb2*")))
+        (unwind-protect
+            (progn
+              ;; First render
+              (expect (length captured-fns) :to-equal 1)
+              ;; Re-render with same deps
+              (vui--rerender-instance instance)
+              (expect (length captured-fns) :to-equal 2)
+              (expect (eq (nth 0 captured-fns) (nth 1 captured-fns)) :to-be-truthy)
+              ;; Change deps and re-render
+              (setf (vui-instance-state instance)
+                    (plist-put (vui-instance-state instance) :id 2))
+              (vui--rerender-instance instance)
+              ;; Should get a NEW function (not eq)
+              (expect (length captured-fns) :to-equal 3)
+              (expect (eq (nth 0 captured-fns) (nth 2 captured-fns)) :to-be nil))
+          (kill-buffer "*test-cb2*")))))
+
+  (it "captures correct closure values"
+    (let ((result nil))
+      (defcomponent callback-closure ()
+        :state ((value 42))
+        :render (let ((cb (use-callback (value)
+                            (setq result value))))
+                  ;; Call the callback
+                  (funcall cb)
+                  (vui-text "test")))
+      (let ((instance (vui-mount (vui-component 'callback-closure) "*test-cb3*")))
+        (unwind-protect
+            (expect result :to-equal 42)
+          (kill-buffer "*test-cb3*"))))))
+
+(describe "use-memo"
+  (it "caches computed value across re-renders"
+    (let ((compute-count 0))
+      (defcomponent memo-test ()
+        :state ((count 0))
+        :render (let ((expensive (use-memo ()
+                                   (setq compute-count (1+ compute-count))
+                                   (* 2 42))))
+                  (vui-text (format "%d-%d" count expensive))))
+      (let ((instance (vui-mount (vui-component 'memo-test) "*test-memo1*")))
+        (unwind-protect
+            (progn
+              ;; First render computes
+              (expect compute-count :to-equal 1)
+              (expect (buffer-string) :to-equal "0-84")
+              ;; Re-render should NOT recompute (deps empty)
+              (setf (vui-instance-state instance)
+                    (plist-put (vui-instance-state instance) :count 1))
+              (vui--rerender-instance instance)
+              (expect compute-count :to-equal 1)
+              (expect (buffer-string) :to-equal "1-84"))
+          (kill-buffer "*test-memo1*")))))
+
+  (it "recomputes when deps change"
+    (let ((compute-count 0))
+      (defcomponent memo-deps ()
+        :state ((multiplier 2))
+        :render (let ((result (use-memo (multiplier)
+                                (setq compute-count (1+ compute-count))
+                                (* multiplier 10))))
+                  (vui-text (number-to-string result))))
+      (let ((instance (vui-mount (vui-component 'memo-deps) "*test-memo2*")))
+        (unwind-protect
+            (progn
+              ;; First render
+              (expect compute-count :to-equal 1)
+              (expect (buffer-string) :to-equal "20")
+              ;; Re-render with same deps
+              (vui--rerender-instance instance)
+              (expect compute-count :to-equal 1)
+              ;; Change deps
+              (setf (vui-instance-state instance)
+                    (plist-put (vui-instance-state instance) :multiplier 5))
+              (vui--rerender-instance instance)
+              (expect compute-count :to-equal 2)
+              (expect (buffer-string) :to-equal "50"))
+          (kill-buffer "*test-memo2*")))))
+
+  (it "can memoize filtered lists"
+    (let ((filter-count 0))
+      (defcomponent memo-filter ()
+        :state ((items '("apple" "banana" "apricot")) (filter "ap"))
+        :render (let ((filtered (use-memo (items filter)
+                                  (setq filter-count (1+ filter-count))
+                                  (seq-filter (lambda (i) (string-prefix-p filter i)) items))))
+                  (vui-text (string-join filtered ", "))))
+      (let ((instance (vui-mount (vui-component 'memo-filter) "*test-memo3*")))
+        (unwind-protect
+            (progn
+              (expect filter-count :to-equal 1)
+              (expect (buffer-string) :to-equal "apple, apricot")
+              ;; Re-render without changing filter deps
+              (vui--rerender-instance instance)
+              (expect filter-count :to-equal 1))
+          (kill-buffer "*test-memo3*"))))))
+
+(describe "vui-table"
+  (it "creates a table vnode"
+    (let ((node (vui-table
+                 :columns '((:header "A") (:header "B"))
+                 :rows '(("1" "2")))))
+      (expect (vui-vnode-table-p node) :to-be-truthy)
+      (expect (length (vui-vnode-table-columns node)) :to-equal 2)
+      (expect (length (vui-vnode-table-rows node)) :to-equal 1)))
+
+  ;; Content-only: no trailing newlines
+  (it "has no trailing newline without borders"
+    (with-temp-buffer
+      (vui-render (vui-table
+                   :columns '((:width 1 :grow t))
+                   :rows '(("a") ("b"))))
+      ;; Internal newlines between rows, but no trailing newline
+      (expect (buffer-string) :to-equal "a\nb")))
+
+  (it "has no trailing newline with borders"
+    (with-temp-buffer
+      (vui-render (vui-table
+                   :columns '((:width 1 :grow t))
+                   :rows '(("x"))
+                   :border :ascii))
+      ;; +---+\n| x |\n+---+ with NO trailing newline
+      (expect (buffer-string) :to-equal "+---+\n| x |\n+---+")))
+
+  (it "renders simple table without borders"
+    (with-temp-buffer
+      (vui-render (vui-table
+                   :columns '((:width 4 :grow t) (:width 4 :grow t))
+                   :rows '(("A" "B") ("C" "D"))))
+      (expect (buffer-string) :to-equal "A    B   \nC    D   ")))
+
+  (it "renders table with headers"
+    (with-temp-buffer
+      (vui-render (vui-table
+                   :columns '((:header "X" :width 3 :grow t) (:header "Y" :width 3 :grow t))
+                   :rows '(("1" "2"))))
+      (expect (buffer-string) :to-match "X")
+      (expect (buffer-string) :to-match "Y")
+      (expect (buffer-string) :to-match "1")
+      (expect (buffer-string) :to-match "2")))
+
+  (it "renders table with ascii borders"
+    (with-temp-buffer
+      (vui-render (vui-table
+                   :columns '((:header "A" :width 3 :grow t) (:header "B" :width 3 :grow t))
+                   :rows '(("1" "2"))
+                   :border :ascii))
+      ;; Width 3 + padding 1 on each side = 5 per column
+      (expect (buffer-string) :to-match "\\+-----\\+-----\\+")
+      (expect (buffer-string) :to-match "| A   | B   |")
+      (expect (buffer-string) :to-match "| 1   | 2   |")))
+
+  (it "renders table with unicode borders"
+    (with-temp-buffer
+      (vui-render (vui-table
+                   :columns '((:header "A" :width 3 :grow t) (:header "B" :width 3 :grow t))
+                   :rows '(("1" "2"))
+                   :border :unicode))
+      (expect (buffer-string) :to-match "┌")
+      (expect (buffer-string) :to-match "│")
+      (expect (buffer-string) :to-match "└")))
+
+  (it "respects column alignment"
+    (with-temp-buffer
+      (vui-render (vui-table
+                   :columns '((:width 5 :grow t :align :left)
+                              (:width 5 :grow t :align :right)
+                              (:width 5 :grow t :align :center))
+                   :rows '(("L" "R" "C"))))
+      (expect (buffer-string) :to-match "L    ")
+      (expect (buffer-string) :to-match "    R")
+      (expect (buffer-string) :to-match "  C  ")))
+
+  (it "auto-calculates column widths from content"
+    (with-temp-buffer
+      (vui-render (vui-table
+                   :columns '(nil nil)
+                   :rows '(("short" "longer-text"))))
+      ;; Content should fit without truncation
+      (expect (buffer-string) :to-match "short")
+      (expect (buffer-string) :to-match "longer-text")))
+
+  ;; Cell structure tests - verify "| VALUE |" format
+  (it "surrounds cell content with proper separators"
+    (with-temp-buffer
+      (vui-render (vui-table
+                   :columns '((:width 5 :grow t))
+                   :rows '(("hello"))
+                   :border :ascii))
+      ;; Cell should be: "| " + content + " |"
+      (expect (buffer-string) :to-match "| hello |")))
+
+  ;; Truncation tests
+  (it "truncates content when :truncate is set"
+    (with-temp-buffer
+      (vui-render (vui-table
+                   :columns '((:width 8 :truncate t))
+                   :rows '(("hello world"))
+                   :border :ascii))
+      ;; "hello world" (11 chars) -> "hello..." (8 chars)
+      (expect (buffer-string) :to-match "| hello\\.\\.\\. |")
+      (expect (buffer-string) :not :to-match "world")))
+
+  (it "does not truncate when content fits width"
+    (with-temp-buffer
+      (vui-render (vui-table
+                   :columns '((:width 8 :truncate t))
+                   :rows '(("short"))
+                   :border :ascii))
+      ;; Content fits, no truncation needed
+      (expect (buffer-string) :to-match "| short |")))
+
+  ;; Overflow tests
+  (it "overflows with broken bar when content exceeds width"
+    (with-temp-buffer
+      (vui-render (vui-table
+                   :columns '((:width 5))
+                   :rows '(("hello world"))
+                   :border :ascii))
+      ;; Content up to width, then " ¦" (space + broken bar) + overflow content
+      (expect (buffer-string) :to-match "| hello ¦world")))
+
+  (it "shrinks column to content when content is shorter than width without grow"
+    (with-temp-buffer
+      (vui-render (vui-table
+                   :columns '((:width 10))
+                   :rows '(("hi"))
+                   :border :ascii))
+      ;; Without :grow, column shrinks to content size
+      ;; Cell: "| hi |" not "| hi         |"
+      (expect (buffer-string) :to-match "| hi |")))
+
+  ;; Grow tests
+  (it "does not overflow when :grow t expands column"
+    (with-temp-buffer
+      (vui-render (vui-table
+                   :columns '((:width 5 :grow t))
+                   :rows '(("hello world"))
+                   :border :ascii))
+      ;; With :grow t, column expands to fit content - no overflow
+      (expect (buffer-string) :to-match "| hello world |")
+      ;; Should NOT have overflow indicator
+      (expect (buffer-string) :not :to-match "¦")))
+
+  (it "uses :grow t to enforce minimum width with padding"
+    (with-temp-buffer
+      (vui-render (vui-table
+                   :columns '((:width 10 :grow t))
+                   :rows '(("hi"))
+                   :border :ascii))
+      ;; With :grow t, column is at least width 10, content padded
+      (expect (buffer-string) :to-match "| hi         |")))
+
+  (it "pads columns without borders when :grow t is set"
+    (with-temp-buffer
+      (vui-render (vui-table
+                   :columns '((:width 10 :grow t) (:width 10 :grow t))
+                   :rows '(("A" "B"))))
+      ;; Columns should be padded to width 10 (no borders = space separator)
+      (expect (buffer-string) :to-match "A         ")
+      (expect (buffer-string) :to-match "B         ")))
+
+  ;; Grow + Truncate combination
+  (it "truncates even with :grow when :truncate is set"
+    (with-temp-buffer
+      (vui-render (vui-table
+                   :columns '((:width 8 :grow t :truncate t))
+                   :rows '(("hello world"))
+                   :border :ascii))
+      ;; :truncate wins - content is truncated, not expanded
+      (expect (buffer-string) :to-match "| hello\\.\\.\\. |")
+      (expect (buffer-string) :not :to-match "world")))
+
+  (it "pads with :grow :truncate when content is shorter"
+    (with-temp-buffer
+      (vui-render (vui-table
+                   :columns '((:width 10 :grow t :truncate t))
+                   :rows '(("hi"))
+                   :border :ascii))
+      ;; Content shorter than width, :grow pads it
+      (expect (buffer-string) :to-match "| hi         |")))
+
+  ;; Content exactly equal to width
+  (it "handles content exactly equal to width"
+    (with-temp-buffer
+      (vui-render (vui-table
+                   :columns '((:width 5 :grow t))
+                   :rows '(("hello"))
+                   :border :ascii))
+      ;; Content exactly fits, no padding or truncation
+      (expect (buffer-string) :to-match "| hello |")))
+
+  ;; Button truncation in tables
+  (it "truncates button label when column has :truncate"
+    (with-temp-buffer
+      (vui-render (vui-table
+                   :columns '((:width 10 :truncate t))
+                   :rows (list (list (vui-button "hello world")))))
+      ;; Button "hello world" (11 chars) + [] = 13 chars, must fit in 10
+      ;; Should be [hello...] = 10 chars
+      (expect (buffer-string) :to-equal "[hello...]")))
+
+  (it "does not truncate button when it fits"
+    (with-temp-buffer
+      (vui-render (vui-table
+                   :columns '((:width 10 :grow t))
+                   :rows (list (list (vui-button "hello")))))
+      ;; Button [hello] = 7 chars, fits in 10 with padding
+      (expect (buffer-string) :to-match "\\[hello\\]")))
+
+  (it "truncates button in bordered table cell"
+    (with-temp-buffer
+      (vui-render (vui-table
+                   :columns '((:width 10 :grow t :truncate t))
+                   :rows (list (list (vui-button "very long button")))
+                   :border :ascii))
+      ;; Cell content must be 10 chars, button truncated
+      ;; max-width=10: [] takes 2, ... takes 3, so 5 chars for label = "very "
+      ;; | [very ...] | - button inside 10-char cell
+      (expect (buffer-string) :to-match "| \\[very \\.\\.\\.\\] |"))))
+
+(describe "vui-error-boundary"
+  (it "creates an error boundary vnode"
+    (let ((node (vui-error-boundary
+                 :fallback (lambda (_) (vui-text "Error"))
+                 :children (list (vui-text "OK")))))
+      (expect (vui-vnode-error-boundary-p node) :to-be-truthy)
+      (expect (vui-vnode-error-boundary-fallback node) :to-be-truthy)
+      (expect (vui-vnode-error-boundary-children node) :to-equal (list (vui-text "OK")))))
+
+  (it "renders children when no error"
+    (with-temp-buffer
+      (clrhash vui--error-boundary-errors)
+      (vui-render (vui-error-boundary
+                   :id 'test-no-error
+                   :fallback (lambda (_) (vui-text "Error occurred"))
+                   :children (list (vui-text "Hello World"))))
+      (expect (buffer-string) :to-equal "Hello World")))
+
+  (it "catches errors and renders fallback"
+    (with-temp-buffer
+      (clrhash vui--error-boundary-errors)
+      (defcomponent error-component ()
+        :render (error "Test error"))
+      (vui-render (vui-error-boundary
+                   :id 'test-catch-error
+                   :fallback (lambda (err)
+                               (vui-text (format "Caught: %s" (cadr err))))
+                   :children (list (vui-component 'error-component))))
+      (expect (buffer-string) :to-match "Caught: Test error")))
+
+  (it "calls on-error callback when error is caught"
+    (let ((error-log nil))
+      (with-temp-buffer
+        (clrhash vui--error-boundary-errors)
+        (defcomponent error-component2 ()
+          :render (error "Logged error"))
+        (vui-render (vui-error-boundary
+                     :id 'test-on-error
+                     :on-error (lambda (err)
+                                 (setq error-log err))
+                     :fallback (lambda (_) (vui-text "Fallback"))
+                     :children (list (vui-component 'error-component2))))
+        (expect error-log :to-be-truthy)
+        (expect (cadr error-log) :to-equal "Logged error"))))
+
+  (it "persists error state across re-renders"
+    (clrhash vui--error-boundary-errors)
+    (defcomponent error-counter ()
+      :state ((count 0))
+      :render (progn
+                (when (> count 0)
+                  (error "Count is positive"))
+                (vui-text (number-to-string count))))
+    (let ((instance (vui-mount
+                     (vui-component 'error-counter)
+                     "*test-persist-error*")))
+      (unwind-protect
+          (progn
+            ;; Initially no error
+            (expect (with-current-buffer "*test-persist-error*"
+                      (buffer-string))
+                    :to-equal "0")
+            ;; Wrap in error boundary and trigger error
+            (clrhash vui--error-boundary-errors)
+            (setf (vui-instance-state instance)
+                  (plist-put (vui-instance-state instance) :count 1)))
+        (kill-buffer "*test-persist-error*"))))
+
+  (it "resets error with vui-reset-error-boundary"
+    (with-temp-buffer
+      (clrhash vui--error-boundary-errors)
+      ;; Store a fake error
+      (puthash 'reset-test '(error "Fake error") vui--error-boundary-errors)
+      (expect (gethash 'reset-test vui--error-boundary-errors) :to-be-truthy)
+      ;; Reset it
+      (let ((vui--root-instance nil)) ; Prevent re-render
+        (vui-reset-error-boundary 'reset-test))
+      (expect (gethash 'reset-test vui--error-boundary-errors) :to-be nil))))
+
+(describe "lifecycle error handling"
+  (it "catches on-mount errors and stores them"
+    (let ((vui-lifecycle-error-handler 'ignore))
+      (defcomponent error-on-mount ()
+        :on-mount (error "Mount error")
+        :render (vui-text "OK"))
+      (setq vui-last-error nil)
+      (vui-mount (vui-component 'error-on-mount) "*test-mount-error*")
+      (unwind-protect
+          (progn
+            (expect vui-last-error :to-be-truthy)
+            (expect (car vui-last-error) :to-equal 'lifecycle)
+            (expect (plist-get (caddr vui-last-error) :hook) :to-equal "on-mount"))
+        (kill-buffer "*test-mount-error*"))))
+
+  (it "catches on-update errors and stores them"
+    (let ((vui-lifecycle-error-handler 'ignore))
+      (defcomponent error-on-update ()
+        :state ((count 0))
+        :on-update (error "Update error")
+        :render (vui-text (number-to-string count)))
+      (setq vui-last-error nil)
+      (let ((instance (vui-mount (vui-component 'error-on-update) "*test-update-error*")))
+        (unwind-protect
+            (progn
+              ;; on-update not called on first render
+              (expect vui-last-error :to-be nil)
+              ;; Trigger re-render
+              (setf (vui-instance-state instance)
+                    (plist-put (vui-instance-state instance) :count 1))
+              (vui--rerender-instance instance)
+              ;; Now error should be caught
+              (expect vui-last-error :to-be-truthy)
+              (expect (plist-get (caddr vui-last-error) :hook) :to-equal "on-update"))
+          (kill-buffer "*test-update-error*")))))
+
+  (it "catches on-unmount errors and stores them"
+    (let ((vui-lifecycle-error-handler 'ignore))
+      (defcomponent error-on-unmount ()
+        :on-unmount (error "Unmount error")
+        :render (vui-text "Content"))
+      (defcomponent unmount-wrapper ()
+        :state ((show t))
+        :render (if show
+                    (vui-component 'error-on-unmount)
+                  (vui-text "Hidden")))
+      (setq vui-last-error nil)
+      (let ((instance (vui-mount (vui-component 'unmount-wrapper) "*test-unmount-error*")))
+        (unwind-protect
+            (progn
+              ;; Hide the child to trigger unmount
+              (setf (vui-instance-state instance)
+                    (plist-put (vui-instance-state instance) :show nil))
+              (vui--rerender-instance instance)
+              ;; Error should be caught
+              (expect vui-last-error :to-be-truthy)
+              (expect (plist-get (caddr vui-last-error) :hook) :to-equal "on-unmount"))
+          (kill-buffer "*test-unmount-error*")))))
+
+  (it "respects ignore handler"
+    (let ((vui-lifecycle-error-handler 'ignore))
+      (defcomponent silent-error ()
+        :on-mount (error "Silent")
+        :render (vui-text "OK"))
+      ;; Should not signal error
+      (vui-mount (vui-component 'silent-error) "*test-ignore*")
+      (unwind-protect
+          (expect (with-current-buffer "*test-ignore*" (buffer-string))
+                  :to-equal "OK")
+        (kill-buffer "*test-ignore*"))))
+
+  (it "respects signal handler"
+    (let ((vui-lifecycle-error-handler 'signal))
+      (defcomponent signal-error ()
+        :on-mount (error "Should propagate")
+        :render (vui-text "OK"))
+      (expect (vui-mount (vui-component 'signal-error) "*test-signal*")
+              :to-throw 'error)
+      (when (get-buffer "*test-signal*")
+        (kill-buffer "*test-signal*"))))
+
+  (it "calls custom handler function"
+    (let* ((handler-called nil)
+           (vui-lifecycle-error-handler
+            (lambda (hook-name err instance)
+              (setq handler-called (list hook-name (cadr err)
+                                         (vui-component-def-name
+                                          (vui-instance-def instance)))))))
+      (defcomponent custom-handler-test ()
+        :on-mount (error "Custom error")
+        :render (vui-text "OK"))
+      (vui-mount (vui-component 'custom-handler-test) "*test-custom*")
+      (unwind-protect
+          (progn
+            (expect handler-called :to-be-truthy)
+            (expect (car handler-called) :to-equal "on-mount")
+            (expect (cadr handler-called) :to-equal "Custom error")
+            (expect (caddr handler-called) :to-equal 'custom-handler-test))
+        (kill-buffer "*test-custom*")))))
+
+(describe "event error handling"
+  (it "catches on-click errors and stores them"
+    (let ((vui-event-error-handler 'ignore))
+      (defcomponent click-error ()
+        :render (vui-button "Click"
+                            :on-click (lambda () (error "Click error"))))
+      (setq vui-last-error nil)
+      (let ((instance (vui-mount (vui-component 'click-error) "*test-click-error*")))
+        (unwind-protect
+            (progn
+              ;; Simulate button click (buttons are now text with keymap)
+              (with-current-buffer "*test-click-error*"
+                (vui-test--click-button-at (point-min)))
+              ;; Error should be caught
+              (expect vui-last-error :to-be-truthy)
+              (expect (car vui-last-error) :to-equal 'event)
+              (expect (plist-get (caddr vui-last-error) :hook) :to-equal "on-click"))
+          (kill-buffer "*test-click-error*")))))
+
+  (it "catches on-change errors for checkbox"
+    (let ((vui-event-error-handler 'ignore))
+      (setq vui-last-error nil)
+      (with-temp-buffer
+        (vui-render (vui-checkbox
+                     :checked nil
+                     :on-change (lambda (_) (error "Checkbox error"))))
+        ;; Simulate checkbox toggle (checkboxes are still widgets)
+        (widget-apply (widget-at (point-min)) :notify nil))
+      (expect vui-last-error :to-be-truthy)
+      (expect (plist-get (caddr vui-last-error) :hook) :to-equal "on-change")))
+
+  (it "respects ignore handler for events"
+    (let ((vui-event-error-handler 'ignore))
+      (setq vui-last-error nil)
+      (with-temp-buffer
+        (vui-render (vui-button "Test"
+                                :on-click (lambda () (error "Silent error"))))
+        ;; Should not signal error (buttons are now text with keymap)
+        (vui-test--click-button-at (point-min)))
+      ;; Error stored but not signaled
+      (expect vui-last-error :to-be-truthy)))
+
+  (it "respects signal handler for events"
+    (let ((vui-event-error-handler 'signal))
+      (with-temp-buffer
+        (vui-render (vui-button "Test"
+                                :on-click (lambda () (error "Should propagate"))))
+        ;; Should signal error (buttons are now text with keymap)
+        (expect (vui-test--click-button-at (point-min))
+                :to-throw 'error))))
+
+  (it "calls custom handler for events"
+    (let* ((handler-called nil)
+           (vui-event-error-handler
+            (lambda (hook-name err _instance)
+              (setq handler-called (list hook-name (cadr err))))))
+      (with-temp-buffer
+        (vui-render (vui-button "Test"
+                                :on-click (lambda () (error "Custom event error"))))
+        (vui-test--click-button-at (point-min)))
+      (expect handler-called :to-be-truthy)
+      (expect (car handler-called) :to-equal "on-click")
+      (expect (cadr handler-called) :to-equal "Custom event error"))))
+
+(describe "vui-set-state functional updates"
+  (it "accepts function as value"
+    (defcomponent fn-update-test ()
+      :state ((count 0))
+      :render (vui-button "Inc" :on-click (lambda () (vui-set-state :count #'1+))))
+    (let ((instance (vui-mount (vui-component 'fn-update-test) "*test-fn*")))
+      (unwind-protect
+          (progn
+            (expect (plist-get (vui-instance-state instance) :count) :to-equal 0)
+            (with-current-buffer "*test-fn*"
+              (vui-test--click-button-at (point-min))
+              (vui-test--click-button-at (point-min))
+              (vui-test--click-button-at (point-min)))
+            (expect (plist-get (vui-instance-state instance) :count) :to-equal 3))
+        (kill-buffer "*test-fn*"))))
+
+  (it "functional update receives current value"
+    (defcomponent fn-transform-test ()
+      :state ((items '("a" "b")))
+      :render (vui-button "Add"
+                :on-click (lambda ()
+                            (vui-set-state :items (lambda (old) (cons "new" old))))))
+    (let ((instance (vui-mount (vui-component 'fn-transform-test) "*test-fn2*")))
+      (unwind-protect
+          (progn
+            (expect (plist-get (vui-instance-state instance) :items)
+                    :to-equal '("a" "b"))
+            (with-current-buffer "*test-fn2*"
+              (vui-test--click-button-at (point-min)))
+            (expect (plist-get (vui-instance-state instance) :items)
+                    :to-equal '("new" "a" "b")))
+        (kill-buffer "*test-fn2*"))))
+
+  (it "handles non-function values normally"
+    (defcomponent mixed-update-test ()
+      :state ((value 10))
+      :render (vui-hstack
+               (vui-button "Set" :on-click (lambda () (vui-set-state :value 42)))
+               (vui-button "Inc" :on-click (lambda () (vui-set-state :value #'1+)))))
+    (let ((instance (vui-mount (vui-component 'mixed-update-test) "*test-fn3*")))
+      (unwind-protect
+          (with-current-buffer "*test-fn3*"
+            ;; Click Set button (sets to 42)
+            (goto-char (point-min))
+            (search-forward "[Set]")
+            (vui-test--click-button-at (match-beginning 0))
+            (expect (plist-get (vui-instance-state instance) :value) :to-equal 42)
+            ;; Click Inc button (increments using function)
+            (goto-char (point-min))
+            (search-forward "[Inc]")
+            (vui-test--click-button-at (match-beginning 0))
+            (expect (plist-get (vui-instance-state instance) :value) :to-equal 43))
+        (kill-buffer "*test-fn3*"))))
+
+  (it "avoids stale closure issue with functional update"
+    ;; This demonstrates why functional updates are important:
+    ;; Without them, closures capture stale values
+    (defcomponent stale-closure-test ()
+      :state ((count 0))
+      :render
+      (progn
+        ;; Use functional update to avoid stale closure
+        (vui-button "Safe Inc" :on-click (lambda () (vui-set-state :count #'1+)))))
+    (let ((instance (vui-mount (vui-component 'stale-closure-test) "*test-fn4*")))
+      (unwind-protect
+          (with-current-buffer "*test-fn4*"
+            ;; Rapid clicks - all should increment properly with functional update
+            (dotimes (_ 5)
+              (vui-test--click-button-at (point-min)))
+            (expect (plist-get (vui-instance-state instance) :count) :to-equal 5))
+        (kill-buffer "*test-fn4*")))))
+
+(describe "vui-batch"
+  (it "batches multiple state updates into single render"
+    (let ((vui-render-delay nil)  ; Disable idle rendering
+          (render-count 0))
+      (defcomponent batch-test ()
+        :state ((a 0) (b 0))
+        :render (progn
+                  (setq render-count (1+ render-count))
+                  (vui-text (format "a=%d b=%d" a b))))
+      (let ((instance (vui-mount (vui-component 'batch-test) "*test-batch*")))
+        (unwind-protect
+            (progn
+              ;; Initial render
+              (expect render-count :to-equal 1)
+              ;; Batch multiple updates
+              (with-current-buffer "*test-batch*"
+                (let ((vui--current-instance instance)
+                      (vui--root-instance instance))
+                  (vui-batch
+                   (vui-set-state :a 1)
+                   (vui-set-state :b 2))))
+              ;; Should only have one additional render (total 2)
+              (expect render-count :to-equal 2)
+              (expect (with-current-buffer "*test-batch*" (buffer-string))
+                      :to-equal "a=1 b=2"))
+          (kill-buffer "*test-batch*")))))
+
+  (it "handles nested batches correctly"
+    (let ((vui-render-delay nil)
+          (render-count 0))
+      (defcomponent nested-batch-test ()
+        :state ((x 0))
+        :render (progn
+                  (setq render-count (1+ render-count))
+                  (vui-text (number-to-string x))))
+      (let ((instance (vui-mount (vui-component 'nested-batch-test) "*test-nested-batch*")))
+        (unwind-protect
+            (progn
+              (expect render-count :to-equal 1)
+              (with-current-buffer "*test-nested-batch*"
+                (let ((vui--current-instance instance)
+                      (vui--root-instance instance))
+                  (vui-batch
+                   (vui-set-state :x 1)
+                   (vui-batch
+                    (vui-set-state :x 2))
+                   (vui-set-state :x 3))))
+              ;; Only one render at the end of outermost batch
+              (expect render-count :to-equal 2)
+              (expect (with-current-buffer "*test-nested-batch*" (buffer-string))
+                      :to-equal "3"))
+          (kill-buffer "*test-nested-batch*")))))
+
+  (it "does not render if no state changes"
+    (let ((vui-render-delay nil)
+          (render-count 0))
+      (defcomponent no-change-batch ()
+        :state ((val 0))
+        :render (progn
+                  (setq render-count (1+ render-count))
+                  (vui-text "OK")))
+      (let ((instance (vui-mount (vui-component 'no-change-batch) "*test-no-change*")))
+        (unwind-protect
+            (progn
+              (expect render-count :to-equal 1)
+              ;; Empty batch - no state changes
+              (vui-batch)
+              ;; Should not trigger re-render
+              (expect render-count :to-equal 1))
+          (kill-buffer "*test-no-change*"))))))
+
+(describe "vui-flush-sync"
+  (it "forces immediate render"
+    (let ((vui-render-delay 10)  ; Long delay
+          (render-count 0))
+      (defcomponent flush-test ()
+        :state ((val 0))
+        :render (progn
+                  (setq render-count (1+ render-count))
+                  (vui-text (number-to-string val))))
+      (let ((instance (vui-mount (vui-component 'flush-test) "*test-flush*")))
+        (unwind-protect
+            (progn
+              (expect render-count :to-equal 1)
+              ;; Change state (would be deferred)
+              (with-current-buffer "*test-flush*"
+                (let ((vui--current-instance instance)
+                      (vui--root-instance instance))
+                  (vui-set-state :val 42)))
+              ;; Timer scheduled but not fired yet
+              ;; Force sync render
+              (let ((vui--root-instance instance))
+                (vui-flush-sync))
+              ;; Should have rendered
+              (expect render-count :to-equal 2)
+              (expect (with-current-buffer "*test-flush*" (buffer-string))
+                      :to-equal "42"))
+          (kill-buffer "*test-flush*"))))))
+
+(describe "should-update"
+  (it "always renders on first render"
+    (let ((vui-render-delay nil)
+          (render-count 0))
+      (defcomponent always-skip ()
+        :should-update nil  ; Always return nil - but first render still happens
+        :render (progn
+                  (setq render-count (1+ render-count))
+                  (vui-text "OK")))
+      (vui-mount (vui-component 'always-skip) "*test-first-render*")
+      (unwind-protect
+          (expect render-count :to-equal 1)
+        (kill-buffer "*test-first-render*"))))
+
+  (it "skips render when should-update returns nil"
+    (let ((vui-render-delay nil)
+          (render-count 0))
+      (defcomponent skip-renders ()
+        :state ((count 0))
+        :should-update nil  ; Always skip re-renders
+        :render (progn
+                  (setq render-count (1+ render-count))
+                  (vui-text (number-to-string count))))
+      (let ((instance (vui-mount (vui-component 'skip-renders) "*test-skip*")))
+        (unwind-protect
+            (progn
+              (expect render-count :to-equal 1)
+              (expect (with-current-buffer "*test-skip*" (buffer-string))
+                      :to-equal "0")
+              ;; Change state and trigger re-render
+              (with-current-buffer "*test-skip*"
+                (let ((vui--current-instance instance)
+                      (vui--root-instance instance))
+                  (vui-set-state :count 42)))
+              ;; Render function should not have been called
+              (expect render-count :to-equal 1)
+              ;; But content is still there (cached vtree)
+              (expect (with-current-buffer "*test-skip*" (buffer-string))
+                      :to-equal "0"))
+          (kill-buffer "*test-skip*")))))
+
+  (it "renders when should-update returns t"
+    (let ((vui-render-delay nil)
+          (render-count 0))
+      (defcomponent always-render ()
+        :state ((count 0))
+        :should-update t  ; Always re-render
+        :render (progn
+                  (setq render-count (1+ render-count))
+                  (vui-text (number-to-string count))))
+      (let ((instance (vui-mount (vui-component 'always-render) "*test-always*")))
+        (unwind-protect
+            (progn
+              (expect render-count :to-equal 1)
+              ;; Trigger re-render
+              (with-current-buffer "*test-always*"
+                (let ((vui--current-instance instance)
+                      (vui--root-instance instance))
+                  (vui-set-state :count 42)))
+              ;; Should have re-rendered
+              (expect render-count :to-equal 2)
+              (expect (with-current-buffer "*test-always*" (buffer-string))
+                      :to-equal "42"))
+          (kill-buffer "*test-always*")))))
+
+  (it "can compare prev values in should-update"
+    (let ((vui-render-delay nil)
+          (render-count 0))
+      (defcomponent smart-update ()
+        :state ((important 0) (unimportant 0))
+        ;; Only re-render when important changes
+        :should-update (not (equal important (plist-get prev-state :important)))
+        :render (progn
+                  (setq render-count (1+ render-count))
+                  (vui-text (format "i=%d u=%d" important unimportant))))
+      (let ((instance (vui-mount (vui-component 'smart-update) "*test-smart*")))
+        (unwind-protect
+            (progn
+              (expect render-count :to-equal 1)
+              ;; Change unimportant - should NOT re-render
+              (with-current-buffer "*test-smart*"
+                (let ((vui--current-instance instance)
+                      (vui--root-instance instance))
+                  (vui-set-state :unimportant 999)))
+              (expect render-count :to-equal 1)
+              ;; Change important - SHOULD re-render
+              (with-current-buffer "*test-smart*"
+                (let ((vui--current-instance instance)
+                      (vui--root-instance instance))
+                  (vui-set-state :important 42)))
+              (expect render-count :to-equal 2)
+              (expect (with-current-buffer "*test-smart*" (buffer-string))
+                      :to-equal "i=42 u=999"))
+          (kill-buffer "*test-smart*")))))
+
+  (it "does not call on-update when render skipped"
+    (let ((vui-render-delay nil)
+          (update-count 0))
+      (defcomponent no-update-call ()
+        :state ((val 0))
+        :should-update nil
+        :on-update (setq update-count (1+ update-count))
+        :render (vui-text "OK"))
+      (let ((instance (vui-mount (vui-component 'no-update-call) "*test-no-update*")))
+        (unwind-protect
+            (progn
+              (expect update-count :to-equal 0)
+              ;; Trigger re-render (but should be skipped)
+              (with-current-buffer "*test-no-update*"
+                (let ((vui--current-instance instance)
+                      (vui--root-instance instance))
+                  (vui-set-state :val 42)))
+              ;; on-update should not have been called
+              (expect update-count :to-equal 0))
+          (kill-buffer "*test-no-update*"))))))
+
+(describe "memo comparison modes"
+  (it "uses equal by default"
+    ;; Default should use equal (structural comparison)
+    (expect (vui--deps-equal-p '(1 2 3) '(1 2 3) 'equal) :to-be-truthy)
+    (expect (vui--deps-equal-p '(1 2 3) '(1 2 4) 'equal) :to-be nil)
+    (expect (vui--deps-equal-p '("a" "b") '("a" "b") 'equal) :to-be-truthy))
+
+  (it "supports eq comparison mode"
+    (let ((sym1 'foo)
+          (sym2 'foo)
+          (list1 '(1 2))
+          (list2 '(1 2)))
+      ;; Symbols are eq
+      (expect (vui--deps-equal-p (list sym1) (list sym2) 'eq) :to-be-truthy)
+      ;; Lists are not eq (different objects)
+      (expect (vui--deps-equal-p (list list1) (list list2) 'eq) :to-be nil)
+      ;; But lists are equal
+      (expect (vui--deps-equal-p (list list1) (list list2) 'equal) :to-be-truthy)))
+
+  (it "supports custom comparison function"
+    ;; Custom comparator that only checks first element
+    (let ((first-only (lambda (old new)
+                        (equal (car old) (car new)))))
+      (expect (vui--deps-equal-p '(1 2) '(1 99) first-only) :to-be-truthy)
+      (expect (vui--deps-equal-p '(1 2) '(2 2) first-only) :to-be nil)))
+
+  (it "works with use-memo* macro"
+    (let ((vui-render-delay nil)
+          (compute-count 0))
+      (defcomponent memo-compare-test ()
+        :state ((mode 'view))
+        :render (let ((result (use-memo* (mode)
+                                :compare 'eq
+                                (cl-incf compute-count)
+                                (symbol-name mode))))
+                  (vui-text result)))
+      (let ((instance (vui-mount (vui-component 'memo-compare-test) "*test-memo-cmp*")))
+        (unwind-protect
+            (progn
+              (expect compute-count :to-equal 1)
+              ;; Re-render with same symbol - should use cached value
+              (vui--rerender-instance instance)
+              (expect compute-count :to-equal 1)
+              ;; Change to different symbol - should recompute
+              (setf (vui-instance-state instance)
+                    (plist-put (vui-instance-state instance) :mode 'edit))
+              (vui--rerender-instance instance)
+              (expect compute-count :to-equal 2))
+          (kill-buffer "*test-memo-cmp*"))))))
+
+(describe "timing instrumentation"
+  (before-each
+    (vui-clear-timing)
+    (setq vui-timing-enabled nil))
+
+  (after-each
+    (vui-clear-timing)
+    (setq vui-timing-enabled nil))
+
+  (it "does not collect data when disabled"
+    (setq vui-timing-enabled nil)
+    (defcomponent timing-disabled-test ()
+      :render (vui-text "OK"))
+    (let ((instance (vui-mount (vui-component 'timing-disabled-test) "*test-timing1*")))
+      (unwind-protect
+          (expect (vui-get-timing) :to-be nil)
+        (kill-buffer "*test-timing1*"))))
+
+  (it "collects timing data when enabled"
+    (setq vui-timing-enabled t)
+    (defcomponent timing-enabled-test ()
+      :render (vui-text "OK"))
+    (let ((instance (vui-mount (vui-component 'timing-enabled-test) "*test-timing2*")))
+      (unwind-protect
+          (progn
+            (expect (vui-get-timing) :to-be-truthy)
+            (expect (length (vui-get-timing)) :to-be-greater-than 0))
+        (kill-buffer "*test-timing2*"))))
+
+  (it "records render phase"
+    (setq vui-timing-enabled t)
+    (defcomponent timing-render-test ()
+      :render (vui-text "OK"))
+    (let ((instance (vui-mount (vui-component 'timing-render-test) "*test-timing3*")))
+      (unwind-protect
+          (let ((render-entry (cl-find-if (lambda (e) (eq (plist-get e :phase) 'render))
+                                          (vui-get-timing))))
+            (expect render-entry :to-be-truthy)
+            (expect (plist-get render-entry :component) :to-equal 'timing-render-test)
+            (expect (plist-get render-entry :duration) :to-be-greater-than 0))
+        (kill-buffer "*test-timing3*"))))
+
+  (it "records commit phase"
+    (setq vui-timing-enabled t)
+    (defcomponent timing-commit-test ()
+      :render (vui-text "OK"))
+    (let ((instance (vui-mount (vui-component 'timing-commit-test) "*test-timing4*")))
+      (unwind-protect
+          (let ((commit-entry (cl-find-if (lambda (e) (eq (plist-get e :phase) 'commit))
+                                          (vui-get-timing))))
+            (expect commit-entry :to-be-truthy)
+            (expect (plist-get commit-entry :component) :to-equal 'timing-commit-test))
+        (kill-buffer "*test-timing4*"))))
+
+  (it "records mount phase"
+    (setq vui-timing-enabled t)
+    (defcomponent timing-mount-test ()
+      :on-mount (message "mounted")
+      :render (vui-text "OK"))
+    (let ((instance (vui-mount (vui-component 'timing-mount-test) "*test-timing5*")))
+      (unwind-protect
+          (let ((mount-entry (cl-find-if (lambda (e) (eq (plist-get e :phase) 'mount))
+                                         (vui-get-timing))))
+            (expect mount-entry :to-be-truthy)
+            (expect (plist-get mount-entry :component) :to-equal 'timing-mount-test))
+        (kill-buffer "*test-timing5*"))))
+
+  (it "records update phase"
+    (setq vui-timing-enabled t)
+    (defcomponent timing-update-test ()
+      :state ((count 0))
+      :on-update (message "updated")
+      :render (vui-text (number-to-string count)))
+    (let ((instance (vui-mount (vui-component 'timing-update-test) "*test-timing6*")))
+      (unwind-protect
+          (progn
+            ;; Trigger re-render
+            (setf (vui-instance-state instance)
+                  (plist-put (vui-instance-state instance) :count 1))
+            (vui--rerender-instance instance)
+            (let ((update-entry (cl-find-if (lambda (e) (eq (plist-get e :phase) 'update))
+                                            (vui-get-timing))))
+              (expect update-entry :to-be-truthy)
+              (expect (plist-get update-entry :component) :to-equal 'timing-update-test)))
+        (kill-buffer "*test-timing6*"))))
+
+  (it "records unmount phase"
+    (setq vui-timing-enabled t)
+    (let ((show-child t))
+      (defcomponent timing-unmount-child ()
+        :on-unmount (message "unmounted")
+        :render (vui-text "child"))
+      (defcomponent timing-unmount-parent ()
+        :render (if show-child
+                    (vui-component 'timing-unmount-child)
+                  (vui-text "no child")))
+      (let ((instance (vui-mount (vui-component 'timing-unmount-parent) "*test-timing7*")))
+        (unwind-protect
+            (progn
+              (setq show-child nil)
+              (vui--rerender-instance instance)
+              (let ((unmount-entry (cl-find-if (lambda (e) (eq (plist-get e :phase) 'unmount))
+                                               (vui-get-timing))))
+                (expect unmount-entry :to-be-truthy)
+                (expect (plist-get unmount-entry :component) :to-equal 'timing-unmount-child)))
+          (kill-buffer "*test-timing7*")))))
+
+  (it "clears timing data"
+    (setq vui-timing-enabled t)
+    (defcomponent timing-clear-test ()
+      :render (vui-text "OK"))
+    (let ((instance (vui-mount (vui-component 'timing-clear-test) "*test-timing8*")))
+      (unwind-protect
+          (progn
+            (expect (vui-get-timing) :to-be-truthy)
+            (vui-clear-timing)
+            (expect (vui-get-timing) :to-be nil))
+        (kill-buffer "*test-timing8*"))))
+
+  (it "limits entries to max"
+    (setq vui-timing-enabled t)
+    (let ((vui--timing-max-entries 5))
+      (defcomponent timing-limit-test ()
+        :state ((count 0))
+        :render (vui-text (number-to-string count)))
+      (let ((instance (vui-mount (vui-component 'timing-limit-test) "*test-timing9*")))
+        (unwind-protect
+            (progn
+              ;; Generate many entries by re-rendering
+              (dotimes (i 10)
+                (setf (vui-instance-state instance)
+                      (plist-put (vui-instance-state instance) :count i))
+                (vui--rerender-instance instance))
+              ;; Should be capped at max
+              (expect (length (vui-get-timing)) :to-equal 5))
+          (kill-buffer "*test-timing9*"))))))
+
+(describe "component inspector"
+  (it "returns message when no instance mounted"
+    (let ((vui--root-instance nil))
+      (expect (vui-inspect) :not :to-throw)))
+
+  (it "inspects root instance"
+    (defcomponent inspect-root-test ()
+      :state ((count 42))
+      :render (vui-text "hello"))
+    (let ((instance (vui-mount (vui-component 'inspect-root-test) "*test-inspect1*")))
+      (unwind-protect
+          (progn
+            (vui-inspect)
+            (with-current-buffer "*vui-inspector*"
+              (let ((content (buffer-string)))
+                (expect content :to-match "Component Inspector")
+                (expect content :to-match "inspect-root-test")
+                (expect content :to-match ":count")
+                (expect content :to-match "42"))))
+        (kill-buffer "*test-inspect1*")
+        (when (get-buffer "*vui-inspector*")
+          (kill-buffer "*vui-inspector*")))))
+
+  (it "shows nested component tree"
+    (defcomponent inspect-child ()
+      :state ((value "inner"))
+      :render (vui-text value))
+    (defcomponent inspect-parent ()
+      :state ((label "outer"))
+      :render (vui-fragment
+               (vui-text label)
+               (vui-component 'inspect-child)))
+    (let ((instance (vui-mount (vui-component 'inspect-parent) "*test-inspect2*")))
+      (unwind-protect
+          (progn
+            (vui-inspect)
+            (with-current-buffer "*vui-inspector*"
+              (let ((content (buffer-string)))
+                (expect content :to-match "inspect-parent")
+                (expect content :to-match "inspect-child")
+                (expect content :to-match ":label")
+                (expect content :to-match ":value"))))
+        (kill-buffer "*test-inspect2*")
+        (when (get-buffer "*vui-inspector*")
+          (kill-buffer "*vui-inspector*")))))
+
+  (it "shows props in inspector"
+    (defcomponent inspect-with-props (name)
+      :render (vui-text (format "Hi %s" name)))
+    (let ((instance (vui-mount (vui-component 'inspect-with-props :name "Alice")
+                               "*test-inspect3*")))
+      (unwind-protect
+          (progn
+            (vui-inspect)
+            (with-current-buffer "*vui-inspector*"
+              (let ((content (buffer-string)))
+                (expect content :to-match ":name")
+                (expect content :to-match "Alice"))))
+        (kill-buffer "*test-inspect3*")
+        (when (get-buffer "*vui-inspector*")
+          (kill-buffer "*vui-inspector*"))))))
+
+(describe "state viewer"
+  (it "shows only stateful components"
+    (defcomponent stateless-comp ()
+      :render (vui-text "no state"))
+    (defcomponent stateful-comp ()
+      :state ((val 123))
+      :render (vui-text "with state"))
+    (defcomponent state-viewer-parent ()
+      :state ((parent-val "parent"))
+      :render (vui-fragment
+               (vui-component 'stateless-comp)
+               (vui-component 'stateful-comp)))
+    (let ((instance (vui-mount (vui-component 'state-viewer-parent) "*test-state1*")))
+      (unwind-protect
+          (progn
+            (vui-inspect-state)
+            (with-current-buffer "*vui-state*"
+              (let ((content (buffer-string)))
+                (expect content :to-match "state-viewer-parent")
+                (expect content :to-match "stateful-comp")
+                ;; Stateless should not appear (no state to show)
+                (expect content :not :to-match "stateless-comp"))))
+        (kill-buffer "*test-state1*")
+        (when (get-buffer "*vui-state*")
+          (kill-buffer "*vui-state*"))))))
+
+(describe "instance lookup"
+  (it "finds instance by id"
+    (defcomponent lookup-child ()
+      :render (vui-text "child"))
+    (defcomponent lookup-parent ()
+      :render (vui-component 'lookup-child))
+    (let ((instance (vui-mount (vui-component 'lookup-parent) "*test-lookup1*")))
+      (unwind-protect
+          (let* ((child (car (vui-instance-children instance)))
+                 (child-id (vui-instance-id child))
+                 (found (vui-get-instance-by-id child-id)))
+            (expect found :to-equal child))
+        (kill-buffer "*test-lookup1*"))))
+
+  (it "returns nil for non-existent id"
+    (defcomponent lookup-simple ()
+      :render (vui-text "hi"))
+    (let ((instance (vui-mount (vui-component 'lookup-simple) "*test-lookup2*")))
+      (unwind-protect
+          (expect (vui-get-instance-by-id 999999) :to-be nil)
+        (kill-buffer "*test-lookup2*"))))
+
+  (it "finds all instances of a type"
+    (defcomponent item-comp ()
+      :render (vui-text "item"))
+    (defcomponent list-comp ()
+      :render (vui-fragment
+               (vui-component 'item-comp)
+               (vui-component 'item-comp)
+               (vui-component 'item-comp)))
+    (let ((instance (vui-mount (vui-component 'list-comp) "*test-lookup3*")))
+      (unwind-protect
+          (let ((items (vui-get-component-instances 'item-comp)))
+            (expect (length items) :to-equal 3))
+        (kill-buffer "*test-lookup3*")))))
+
+(describe "debug logging"
+  (before-each
+    (setq vui-debug-enabled nil)
+    (vui-debug-clear))
+
+  (after-each
+    (setq vui-debug-enabled nil)
+    (vui-debug-clear)
+    (when (get-buffer "*vui-debug*")
+      (kill-buffer "*vui-debug*")))
+
+  (it "does not log when disabled"
+    (setq vui-debug-enabled nil)
+    (defcomponent debug-off-test ()
+      :render (vui-text "OK"))
+    (let ((instance (vui-mount (vui-component 'debug-off-test) "*test-debug1*")))
+      (unwind-protect
+          (let ((buf (get-buffer "*vui-debug*")))
+            (if buf
+                (with-current-buffer buf
+                  (expect (buffer-string) :to-equal ""))
+              (expect buf :to-be nil)))
+        (kill-buffer "*test-debug1*"))))
+
+  (it "logs render phase when enabled"
+    (setq vui-debug-enabled t)
+    (defcomponent debug-render-test ()
+      :render (vui-text "OK"))
+    (let ((instance (vui-mount (vui-component 'debug-render-test) "*test-debug2*")))
+      (unwind-protect
+          (with-current-buffer "*vui-debug*"
+            (let ((content (buffer-string)))
+              (expect content :to-match "render:")
+              (expect content :to-match "debug-render-test")))
+        (kill-buffer "*test-debug2*"))))
+
+  (it "logs mount phase"
+    (setq vui-debug-enabled t)
+    (defcomponent debug-mount-test ()
+      :render (vui-text "OK"))
+    (let ((instance (vui-mount (vui-component 'debug-mount-test) "*test-debug3*")))
+      (unwind-protect
+          (with-current-buffer "*vui-debug*"
+            (let ((content (buffer-string)))
+              (expect content :to-match "mount:")
+              (expect content :to-match "debug-mount-test")))
+        (kill-buffer "*test-debug3*"))))
+
+  (it "logs state changes"
+    (setq vui-debug-enabled t)
+    (defcomponent debug-state-test ()
+      :state ((count 0))
+      :render (vui-button "+"
+                          :on-click (lambda () (vui-set-state :count (1+ count)))))
+    (let ((instance (vui-mount (vui-component 'debug-state-test) "*test-debug4*")))
+      (unwind-protect
+          (progn
+            ;; Trigger state change (buttons are now text with keymap)
+            (with-current-buffer "*test-debug4*"
+              (vui-test--click-button-at (point-min)))
+            (with-current-buffer "*vui-debug*"
+              (let ((content (buffer-string)))
+                (expect content :to-match "state-change:")
+                (expect content :to-match ":count"))))
+        (kill-buffer "*test-debug4*"))))
+
+  (it "logs unmount phase"
+    (setq vui-debug-enabled t)
+    (let ((show-child t))
+      (defcomponent debug-unmount-child ()
+        :render (vui-text "child"))
+      (defcomponent debug-unmount-parent ()
+        :render (if show-child
+                    (vui-component 'debug-unmount-child)
+                  (vui-text "no child")))
+      (let ((instance (vui-mount (vui-component 'debug-unmount-parent) "*test-debug5*")))
+        (unwind-protect
+            (progn
+              (setq show-child nil)
+              (vui--rerender-instance instance)
+              (with-current-buffer "*vui-debug*"
+                (let ((content (buffer-string)))
+                  (expect content :to-match "unmount:")
+                  (expect content :to-match "debug-unmount-child"))))
+          (kill-buffer "*test-debug5*")))))
+
+  (it "respects vui-debug-log-phases filter"
+    (setq vui-debug-enabled t)
+    (setq vui-debug-log-phases '(mount))  ; Only log mount
+    (defcomponent debug-filter-test ()
+      :render (vui-text "OK"))
+    (let ((instance (vui-mount (vui-component 'debug-filter-test) "*test-debug6*")))
+      (unwind-protect
+          (with-current-buffer "*vui-debug*"
+            (let ((content (buffer-string)))
+              ;; Should have mount
+              (expect content :to-match "mount:")
+              ;; Should NOT have render
+              (expect content :not :to-match "render:")))
+        (kill-buffer "*test-debug6*")))
+    ;; Reset phases
+    (setq vui-debug-log-phases '(render mount update unmount state-change)))
+
+  (it "clears debug buffer"
+    (setq vui-debug-enabled t)
+    (defcomponent debug-clear-test ()
+      :render (vui-text "OK"))
+    (let ((instance (vui-mount (vui-component 'debug-clear-test) "*test-debug7*")))
+      (unwind-protect
+          (progn
+            (with-current-buffer "*vui-debug*"
+              (expect (buffer-string) :not :to-equal ""))
+            (vui-debug-clear)
+            (with-current-buffer "*vui-debug*"
+              (expect (buffer-string) :to-equal "")))
+        (kill-buffer "*test-debug7*")))))
+
+(describe "use-async"
+  (it "returns ready status when resolve called synchronously"
+    (let ((result nil))
+      (defcomponent async-test-sync ()
+        :render (progn
+                  (setq result (use-async 'test-key
+                                 (lambda (resolve _reject)
+                                   (funcall resolve "loaded data"))))
+                  (vui-text "test")))
+      (let ((instance (vui-mount (vui-component 'async-test-sync) "*test-async1*")))
+        (unwind-protect
+            (progn
+              ;; Should be ready immediately since resolve was called synchronously
+              (expect (plist-get result :status) :to-equal 'ready)
+              (expect (plist-get result :data) :to-equal "loaded data"))
+          (kill-buffer "*test-async1*")))))
+
+  (it "returns pending then ready for async resolve"
+    (let ((result nil)
+          (render-count 0)
+          (stored-resolve nil))
+      (defcomponent async-test-ready ()
+        :render (progn
+                  (setq render-count (1+ render-count))
+                  (setq result (use-async 'test-key
+                                 (lambda (resolve _reject)
+                                   ;; Store resolve to call later (simulate async)
+                                   (setq stored-resolve resolve))))
+                  (vui-text "test")))
+      (let ((instance (vui-mount (vui-component 'async-test-ready) "*test-async2*")))
+        (unwind-protect
+            (progn
+              ;; Initially pending
+              (expect (plist-get result :status) :to-equal 'pending)
+              (expect render-count :to-equal 1)
+              ;; Call resolve asynchronously
+              (funcall stored-resolve "loaded data")
+              ;; Should be ready now with data
+              (expect (plist-get result :status) :to-equal 'ready)
+              (expect (plist-get result :data) :to-equal "loaded data")
+              (expect render-count :to-equal 2))
+          (kill-buffer "*test-async2*")))))
+
+  (it "returns cached result on re-render with same key"
+    (let ((load-count 0)
+          (result nil))
+      (defcomponent async-test-cache ()
+        :state ((counter 0))
+        :render (progn
+                  (setq result (use-async 'test-key
+                                 (lambda (resolve _reject)
+                                   (setq load-count (1+ load-count))
+                                   (funcall resolve "data"))))
+                  (vui-text (number-to-string counter))))
+      (let ((instance (vui-mount (vui-component 'async-test-cache) "*test-async3*")))
+        (unwind-protect
+            (progn
+              ;; First load should complete immediately (sync resolve)
+              (expect load-count :to-equal 1)
+              (expect (plist-get result :status) :to-equal 'ready)
+              ;; Re-render by changing state
+              (setf (vui-instance-state instance)
+                    (plist-put (vui-instance-state instance) :counter 1))
+              (vui--rerender-instance instance)
+              ;; Should NOT trigger another load (cached)
+              (expect load-count :to-equal 1)
+              (expect (plist-get result :status) :to-equal 'ready))
+          (kill-buffer "*test-async3*")))))
+
+  (it "reloads when key changes"
+    (let ((load-count 0)
+          (key-value 1)
+          (result nil))
+      (defcomponent async-test-key-change ()
+        :render (progn
+                  (setq result (use-async (list 'data key-value)
+                                 (lambda (resolve _reject)
+                                   (setq load-count (1+ load-count))
+                                   (funcall resolve (format "data-%d" key-value)))))
+                  (vui-text "test")))
+      (let ((instance (vui-mount (vui-component 'async-test-key-change) "*test-async4*")))
+        (unwind-protect
+            (progn
+              ;; First load completes immediately
+              (expect load-count :to-equal 1)
+              (expect (plist-get result :data) :to-equal "data-1")
+              ;; Change key and re-render
+              (setq key-value 2)
+              (vui--rerender-instance instance)
+              ;; Should have loaded new data
+              (expect load-count :to-equal 2)
+              (expect (plist-get result :data) :to-equal "data-2"))
+          (kill-buffer "*test-async4*")))))
+
+  (it "handles reject callback"
+    (let ((result nil))
+      (defcomponent async-test-reject ()
+        :render (progn
+                  (setq result (use-async 'test-key
+                                 (lambda (_resolve reject)
+                                   (funcall reject "Something went wrong"))))
+                  (vui-text "test")))
+      (let ((instance (vui-mount (vui-component 'async-test-reject) "*test-async5*")))
+        (unwind-protect
+            (progn
+              (expect (plist-get result :status) :to-equal 'error)
+              (expect (plist-get result :error) :to-equal "Something went wrong"))
+          (kill-buffer "*test-async5*")))))
+
+  (it "handles errors thrown in loader"
+    (let ((result nil))
+      (defcomponent async-test-error ()
+        :render (progn
+                  (setq result (use-async 'test-key
+                                 (lambda (_resolve _reject)
+                                   (error "Test error"))))
+                  (vui-text "test")))
+      (let ((instance (vui-mount (vui-component 'async-test-error) "*test-async6*")))
+        (unwind-protect
+            (progn
+              (expect (plist-get result :status) :to-equal 'error)
+              (expect (plist-get result :error) :to-match "Test error"))
+          (kill-buffer "*test-async6*")))))
+
+  (it "supports multiple async calls in same component"
+    (let ((result1 nil)
+          (result2 nil))
+      (defcomponent async-test-multiple ()
+        :render (progn
+                  (setq result1 (use-async 'key1
+                                  (lambda (resolve _reject) (funcall resolve "data1"))))
+                  (setq result2 (use-async 'key2
+                                  (lambda (resolve _reject) (funcall resolve "data2"))))
+                  (vui-text "test")))
+      (let ((instance (vui-mount (vui-component 'async-test-multiple) "*test-async7*")))
+        (unwind-protect
+            (progn
+              (expect (plist-get result1 :status) :to-equal 'ready)
+              (expect (plist-get result1 :data) :to-equal "data1")
+              (expect (plist-get result2 :status) :to-equal 'ready)
+              (expect (plist-get result2 :data) :to-equal "data2"))
+          (kill-buffer "*test-async7*")))))
+
+  (it "supports truly async operations with make-process"
+    (let ((result nil))
+      (defcomponent async-test-process ()
+        :render (progn
+                  (setq result (use-async 'echo-test
+                                 (lambda (resolve reject)
+                                   (make-process
+                                    :name "test-echo"
+                                    :command '("echo" "hello from process")
+                                    :buffer nil
+                                    :sentinel (lambda (proc _event)
+                                                (if (eq 0 (process-exit-status proc))
+                                                    (funcall resolve "process completed")
+                                                  (funcall reject "process failed")))))))
+                  (vui-text "test")))
+      (let ((instance (vui-mount (vui-component 'async-test-process) "*test-async8*")))
+        (unwind-protect
+            (progn
+              ;; Initially pending (process not finished yet)
+              (expect (plist-get result :status) :to-equal 'pending)
+              ;; Wait for process to complete
+              (sleep-for 0.2)
+              ;; Should be ready now
+              (expect (plist-get result :status) :to-equal 'ready)
+              (expect (plist-get result :data) :to-equal "process completed"))
+          (kill-buffer "*test-async8*"))))))
+
+(describe "lifecycle hooks"
+  ;; Disable idle rendering for tests - idle timers don't fire in batch mode
+  (before-each
+    (setq vui-render-delay nil))
+  (after-each
+    (setq vui-render-delay 0.01))
+
+  (describe "on-mount"
+    (it "is called when component first renders"
+      (let ((mount-called nil))
+        (defcomponent test-mount-basic ()
+          :on-mount (setq mount-called t)
+          :render (vui-text "test"))
+        (let ((instance (vui-mount (vui-component 'test-mount-basic) "*test-mount1*")))
+          (unwind-protect
+              (expect mount-called :to-be-truthy)
+            (kill-buffer "*test-mount1*")))))
+
+    (it "cleanup function is called when component unmounts"
+      (let ((mount-called nil)
+            (cleanup-called nil))
+        (defcomponent test-mount-cleanup ()
+          :on-mount (progn
+                      (setq mount-called t)
+                      (lambda () (setq cleanup-called t)))
+          :render (vui-text "child"))
+        (defcomponent test-mount-parent ()
+          :state ((show-child t))
+          :render (if show-child
+                      (vui-component 'test-mount-cleanup)
+                    (vui-text "hidden")))
+        (let ((instance (vui-mount (vui-component 'test-mount-parent) "*test-mount2*")))
+          (unwind-protect
+              (progn
+                (expect mount-called :to-be-truthy)
+                (expect cleanup-called :to-be nil)
+                ;; Hide the child
+                (with-current-buffer "*test-mount2*"
+                  (let ((vui--current-instance instance))
+                    (vui-set-state :show-child nil)))
+                ;; Cleanup should have been called
+                (expect cleanup-called :to-be-truthy))
+            (kill-buffer "*test-mount2*"))))))
+
+  (describe "on-unmount"
+    (it "is called when component is removed from tree"
+      (let ((unmount-called nil))
+        (defcomponent test-unmount-child ()
+          :on-unmount (setq unmount-called t)
+          :render (vui-text "child"))
+        (defcomponent test-unmount-parent ()
+          :state ((show-child t))
+          :render (if show-child
+                      (vui-component 'test-unmount-child)
+                    (vui-text "hidden")))
+        (let ((instance (vui-mount (vui-component 'test-unmount-parent) "*test-unmount1*")))
+          (unwind-protect
+              (progn
+                (expect unmount-called :to-be nil)
+                ;; Hide the child - should trigger unmount
+                (with-current-buffer "*test-unmount1*"
+                  (let ((vui--current-instance instance))
+                    (vui-set-state :show-child nil)))
+                ;; on-unmount should have been called
+                (expect unmount-called :to-be-truthy))
+            (kill-buffer "*test-unmount1*")))))
+
+    (it "is called for nested children when parent unmounts"
+      (let ((parent-unmount nil)
+            (child-unmount nil))
+        (defcomponent test-nested-child ()
+          :on-unmount (setq child-unmount t)
+          :render (vui-text "nested"))
+        (defcomponent test-nested-parent ()
+          :on-unmount (setq parent-unmount t)
+          :render (vui-component 'test-nested-child))
+        (defcomponent test-nested-root ()
+          :state ((show t))
+          :render (if show
+                      (vui-component 'test-nested-parent)
+                    (vui-text "hidden")))
+        (let ((instance (vui-mount (vui-component 'test-nested-root) "*test-unmount2*")))
+          (unwind-protect
+              (progn
+                (expect parent-unmount :to-be nil)
+                (expect child-unmount :to-be nil)
+                ;; Hide parent - should unmount both parent and child
+                (with-current-buffer "*test-unmount2*"
+                  (let ((vui--current-instance instance))
+                    (vui-set-state :show nil)))
+                (expect parent-unmount :to-be-truthy)
+                (expect child-unmount :to-be-truthy))
+            (kill-buffer "*test-unmount2*")))))
+
+    (it "does not remount when showing again after unmount"
+      (let ((mount-count 0)
+            (unmount-count 0))
+        (defcomponent test-toggle-child ()
+          :on-mount (cl-incf mount-count)
+          :on-unmount (cl-incf unmount-count)
+          :render (vui-text "child"))
+        (defcomponent test-toggle-parent ()
+          :state ((show t))
+          :render (if show
+                      (vui-component 'test-toggle-child)
+                    (vui-text "hidden")))
+        (let ((instance (vui-mount (vui-component 'test-toggle-parent) "*test-toggle*")))
+          (unwind-protect
+              (progn
+                ;; Initial mount
+                (expect mount-count :to-equal 1)
+                (expect unmount-count :to-equal 0)
+                ;; Hide
+                (with-current-buffer "*test-toggle*"
+                  (let ((vui--current-instance instance))
+                    (vui-set-state :show nil)))
+                (expect mount-count :to-equal 1)
+                (expect unmount-count :to-equal 1)
+                ;; Show again - should mount fresh
+                (with-current-buffer "*test-toggle*"
+                  (let ((vui--current-instance instance))
+                    (vui-set-state :show t)))
+                (expect mount-count :to-equal 2)
+                (expect unmount-count :to-equal 1))
+            (kill-buffer "*test-toggle*")))))))
+
+
+;;; vui-component-test.el ends here
