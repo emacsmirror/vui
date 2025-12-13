@@ -239,10 +239,10 @@ VUI buffers use =vui-mode=, a major mode derived from =special-mode=. This provi
 
 ** Extending with Custom Keybindings
 
-Users can add bindings to =vui-mode-map=:
+Users can add bindings to =vui-mode-map=. For example, to enable [[https://github.com/d12frosted/ace-link-vui][ace-link-vui]] for quick widget navigation:
 
 #+begin_src elisp
-(define-key vui-mode-map (kbd "o") #'ace-link)
+(define-key vui-mode-map (kbd "o") #'ace-link-vui)
 #+end_src
 
 ** Deriving Custom Modes
@@ -277,6 +277,16 @@ Contributions welcome! Please:
 2. Include tests for new features
 3. Follow existing code style
 4. Update documentation as needed
+
+* Related Projects
+
+- [[https://github.com/d12frosted/ace-link-vui][ace-link-vui]] — Ace-link style navigation for VUI buffers
+
+** Built with VUI
+
+- [[https://github.com/d12frosted/vulpea-ui][vulpea-ui]] — Sidebar UI for vulpea notes
+- [[https://github.com/d12frosted/vulpea-journal][vulpea-journal]] — Journaling system with calendar widgets
+- [[https://github.com/d12frosted/brb][brb]] — Barberry Garden management system
 
 * License
 
