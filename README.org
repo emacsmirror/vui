@@ -12,7 +12,7 @@
 Build reactive UIs in Emacs using familiar patterns from React and other modern UI frameworks. Define components with local state, props, lifecycle hooks, and automatic re-rendering.
 
 #+begin_quote
-*Note:* This is a fresh library under active development. The API may change based on real-world usage and feedback.
+The API is stable and used in [[#built-with-vui][real-world projects]].
 #+end_quote
 
 * Features
@@ -291,6 +291,9 @@ Contributions welcome! Please:
 - [[https://github.com/d12frosted/ace-link-vui][ace-link-vui]] — Ace-link style navigation for VUI buffers
 
 ** Built with VUI
+:PROPERTIES:
+:CUSTOM_ID: built-with-vui
+:END:
 
 - [[https://github.com/d12frosted/vulpea-ui][vulpea-ui]] — Sidebar UI for vulpea notes
 - [[https://github.com/d12frosted/vulpea-journal][vulpea-journal]] — Journaling system with calendar widgets
