@@ -229,6 +229,14 @@ See [[file:docs/examples/][docs/examples/]] for complete, runnable examples:
 - Emacs 27.1 or later
 - Built-in =widget.el= (included with Emacs)
 
+** Known Limitations
+
+*** Emacs 29: Single-widget TAB navigation
+
+On Emacs 29.x, pressing =TAB= in a buffer with only *one* tabbable widget (e.g., a single field or button) will error with "No buttons or fields found". This is a [[https://debbugs.gnu.org/cgi/bugreport.cgi?bug=70594][bug in Emacs's widget-move]] fixed in Emacs 30.
+
+Workaround: Add a second widget, or use mouse/direct interaction. Buffers with multiple widgets work fine.
+
 * Major Mode
 
 VUI buffers use =vui-mode=, a major mode derived from =special-mode=. This provides:

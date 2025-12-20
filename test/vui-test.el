@@ -190,12 +190,11 @@ Buttons are widget.el push-buttons, so we use widget-apply."
       (let ((instance (vui-mount (vui-component 'submit-test) "*test-submit*")))
         (unwind-protect
             (with-current-buffer "*test-submit*"
-              ;; Navigate to the field widget
-              (goto-char (point-min))
-              (widget-forward 1)
-              ;; Simulate RET by applying the widget action
-              (let ((widget (widget-at (point))))
+              ;; Get the field widget directly from widget-field-list
+              ;; (widget-forward doesn't work with single widget on Emacs 29)
+              (let ((widget (car widget-field-list)))
                 (expect widget :to-be-truthy)
+                ;; Simulate RET by applying the widget action
                 (widget-apply widget :action))
               ;; on-submit should have been called with the field value
               (expect submitted-value :to-equal "initial"))
@@ -230,10 +229,9 @@ Buttons are widget.el push-buttons, so we use widget-apply."
     (let ((instance (vui-mount (vui-component 'field-value-edit-test) "*test-fv3*")))
       (unwind-protect
           (with-current-buffer "*test-fv3*"
-            ;; Navigate to field and modify its content
-            (goto-char (point-min))
-            (widget-forward 1)
-            (let ((widget (widget-at (point))))
+            ;; Get the field widget directly from widget-field-list
+            ;; (widget-forward doesn't work with single widget on Emacs 29)
+            (let ((widget (car widget-field-list)))
               ;; Simulate user typing by setting widget value
               (widget-value-set widget "modified")
               ;; vui-field-value should return the modified value
@@ -381,10 +379,9 @@ Buttons are widget.el push-buttons, so we use widget-apply."
     (with-temp-buffer
       (let ((new-value nil))
         (vui-render (vui-field :value "initial" :on-change (lambda (v) (setq new-value v))))
-        ;; Find the field widget and modify it
-        (goto-char (point-min))
-        (widget-forward 1)
-        (let ((widget (widget-at (point))))
+        ;; Get the field widget directly from widget-field-list
+        ;; (widget-forward doesn't work with single widget on Emacs 29)
+        (let ((widget (car widget-field-list)))
           (widget-value-set widget "changed")
           (widget-apply widget :notify widget))
         (expect new-value :to-equal "changed")))))
