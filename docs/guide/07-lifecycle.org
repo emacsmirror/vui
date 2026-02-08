@@ -29,7 +29,6 @@ Runs once after the component is first rendered:
 
 - Fetching initial data
 - Setting up subscriptions
-- Focusing an input field
 - Logging/analytics
 
 ** Cleanup Return Value
